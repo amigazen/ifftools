@@ -5,6 +5,7 @@
   Version:      1.4
   Architecture: m68k-amigaos >= 3.1
   Distribution: Aminet
+  Replaces:     /gfx/conv/iff2png.lha
   Kurz:         Konvertiert IFF-Bilder ins PNG-Format
 
   iff2png is a command-line tool for converting IFF (Interchange File Format)
@@ -13,6 +14,7 @@
 
   Features:
   - Supports all major IFF formats (ILBM, PBM, RGBN, RGB8, DEEP, YUVN, ACBM, FAXX)
+  - Additionally supports VideoToaster's proprietary Framestore ILBM format
   - Handles 24-bit ILBM (deep ILBM with true-color RGB)
   - Automatic optimal PNG encoding based on source image properties
   - Preserves transparency and alpha channels
@@ -20,6 +22,8 @@
   - Preserves metadata (copyright, author, annotations) unless stripped
 
   Version History
+  - 1.5: Added VideoToaster Framestore, a non-standard type of ILBM 
+         and additional metadata elements including IFF sub-type
   - 1.4: Added YUVN, fixed major issues in DEEP support, optimised bitplane extraction algorithms
   - 1.3: First public release on Aminet
 

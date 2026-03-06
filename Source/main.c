@@ -10,7 +10,7 @@
 
 /* Amiga version strings - kept as static to prevent "unreachable" warnings */
 /* These are referenced by the linker/loader, not by code */
-static const char *verstag = "$VER: iff2png 1.4 (2/1/2025)";
+static const char *verstag = "$VER: iff2png 1.5 (6/3/2026)";
 static const char *stack_cookie = "$STACK: 4096";
 long oslibversion  = 40L; 
 
@@ -339,6 +339,7 @@ int main(int argc, char **argv)
             case ID_DEEP: formName = "DEEP"; break;
             case ID_ACBM: formName = "ACBM"; break;
             case ID_FAXX: formName = "FAXX"; break;
+            case ID_YUVN: formName = "YUVN"; break;
             default: formName = "Unknown"; break;
         }
         
@@ -391,6 +392,34 @@ int main(int argc, char **argv)
         PutStr("IFF Source:\n");
         SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "  Format: %s\n", formName);
         PutStr((STRPTR)outputBuffer);
+        
+        /* Sub-format / variant identification */
+        {
+            const char *subFormat = NULL;
+            if (formType == ID_ILBM) {
+                if (IsFramestore(picture)) {
+                    subFormat = "Video Toaster Framestore (16-plane quadrature YCbCr)";
+                } else if (bmhd->nPlanes == 24 && !IsHAM(picture) && !IsEHB(picture)) {
+                    subFormat = "24-bit true color";
+                } else if (IsHAM(picture)) {
+                    subFormat = "HAM (Hold And Modify)";
+                } else if (IsEHB(picture)) {
+                    subFormat = "EHB (Extra Half-Brite)";
+                }
+            } else if (formType == ID_DEEP) {
+                subFormat = "Chunky pixels (DGBL/DPEL/DBOD)";
+            } else if (formType == ID_FAXX) {
+                subFormat = "Facsimile (ITU-T T.4)";
+            } else if (formType == ID_YUVN) {
+                subFormat = "YUV (MacroSystem VLab)";
+            } else if (formType == ID_ACBM) {
+                subFormat = "Alpha channel (ABIT)";
+            }
+            if (subFormat) {
+                SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "  Sub-format: %s\n", subFormat);
+                PutStr((STRPTR)outputBuffer);
+            }
+        }
         
         /* File size */
         {
@@ -450,6 +479,119 @@ int main(int argc, char **argv)
             SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "  Transparent color index: %lu\n", 
                      (ULONG)bmhd->transparentColor);
             PutStr((STRPTR)outputBuffer);
+        }
+        
+        /* Metadata from input file (all known chunks) */
+        {
+            STRPTR s;
+            struct Point2D *grab;
+            struct DestMerge *dest;
+            UWORD *sprt;
+            struct CRangeList *crngList;
+            struct TextList *annoList;
+            struct TextList *textList;
+            ULONG i;
+            int hasMeta;
+            hasMeta = 0;
+            s = ReadCopyright(picture);
+            if (s && s[0]) { hasMeta = 1; }
+            if (!hasMeta) { s = ReadAuthor(picture); if (s && s[0]) hasMeta = 1; }
+            if (!hasMeta) { s = ReadAnnotation(picture); if (s && s[0]) hasMeta = 1; }
+            if (!hasMeta) { s = ReadText(picture); if (s && s[0]) hasMeta = 1; }
+            if (!hasMeta) { grab = ReadGRAB(picture); if (grab) hasMeta = 1; }
+            if (!hasMeta) { dest = ReadDEST(picture); if (dest) hasMeta = 1; }
+            if (!hasMeta) { sprt = ReadSPRT(picture); if (sprt) hasMeta = 1; }
+            if (!hasMeta) { if (ReadCRNG(picture)) hasMeta = 1; }
+            if (!hasMeta) { s = ReadFVER(picture); if (s && s[0]) hasMeta = 1; }
+            if (!hasMeta) { if (ReadEXIF(picture, NULL)) hasMeta = 1; }
+            if (!hasMeta) { if (ReadIPTC(picture, NULL)) hasMeta = 1; }
+            if (!hasMeta) { if (ReadXMP0(picture, NULL)) hasMeta = 1; }
+            if (!hasMeta) { if (ReadXMP1(picture, NULL)) hasMeta = 1; }
+            if (!hasMeta) { if (ReadICCP(picture, NULL)) hasMeta = 1; }
+            if (!hasMeta) { s = ReadICCN(picture); if (s && s[0]) hasMeta = 1; }
+            if (!hasMeta) { if (ReadGEOT(picture, NULL)) hasMeta = 1; }
+            if (hasMeta) {
+                PutStr("  Metadata:\n");
+                s = ReadCopyright(picture);
+                if (s && s[0]) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    Copyright: %s\n", s);
+                    PutStr((STRPTR)outputBuffer);
+                }
+                s = ReadAuthor(picture);
+                if (s && s[0]) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    Author: %s\n", s);
+                    PutStr((STRPTR)outputBuffer);
+                }
+                annoList = ReadAllAnnotations(picture);
+                if (annoList && annoList->count > 0) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    Annotations: %lu\n", (ULONG)annoList->count);
+                    PutStr((STRPTR)outputBuffer);
+                    for (i = 0; i < annoList->count && i < 5; i++) {
+                        if (annoList->texts[i] && annoList->texts[i][0]) {
+                            SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "      [%lu] %.400s\n", (ULONG)(i + 1), annoList->texts[i]);
+                            PutStr((STRPTR)outputBuffer);
+                        }
+                    }
+                    if (annoList->count > 5) {
+                        SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "      ... and %lu more\n", (ULONG)(annoList->count - 5));
+                        PutStr((STRPTR)outputBuffer);
+                    }
+                }
+                textList = ReadAllTexts(picture);
+                if (textList && textList->count > 0) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    Text chunks: %lu\n", (ULONG)textList->count);
+                    PutStr((STRPTR)outputBuffer);
+                }
+                grab = ReadGRAB(picture);
+                if (grab) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    Hotspot (GRAB): %ld, %ld\n", (LONG)grab->x, (LONG)grab->y);
+                    PutStr((STRPTR)outputBuffer);
+                }
+                dest = ReadDEST(picture);
+                if (dest) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    DEST: depth=%lu planePick=%lu planeOnOff=%lu planeMask=%lu\n",
+                             (ULONG)dest->depth, (ULONG)dest->planePick, (ULONG)dest->planeOnOff, (ULONG)dest->planeMask);
+                    PutStr((STRPTR)outputBuffer);
+                }
+                sprt = ReadSPRT(picture);
+                if (sprt) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    Sprite precedence (SPRT): %lu\n", (ULONG)*sprt);
+                    PutStr((STRPTR)outputBuffer);
+                }
+                crngList = ReadAllCRNG(picture);
+                if (crngList && crngList->count > 0) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    Color ranges (CRNG): %lu\n", (ULONG)crngList->count);
+                    PutStr((STRPTR)outputBuffer);
+                }
+                s = ReadFVER(picture);
+                if (s && s[0]) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    FVER: %s\n", s);
+                    PutStr((STRPTR)outputBuffer);
+                }
+                if (ReadEXIF(picture, NULL)) {
+                    PutStr("    EXIF: present\n");
+                }
+                if (ReadIPTC(picture, NULL)) {
+                    PutStr("    IPTC: present\n");
+                }
+                if (ReadXMP0(picture, NULL)) {
+                    PutStr("    XMP (XMP0): present\n");
+                }
+                if (ReadXMP1(picture, NULL)) {
+                    PutStr("    XMP (XMP1): present\n");
+                }
+                if (ReadICCP(picture, NULL)) {
+                    PutStr("    ICC profile: present\n");
+                }
+                s = ReadICCN(picture);
+                if (s && s[0]) {
+                    SNPrintf((STRPTR)outputBuffer, sizeof(outputBuffer), "    ICC profile name (ICCN): %s\n", s);
+                    PutStr((STRPTR)outputBuffer);
+                }
+                if (ReadGEOT(picture, NULL)) {
+                    PutStr("    GeoTIFF: present\n");
+                }
+            }
         }
         
         /* Output PNG target information */

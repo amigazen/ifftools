@@ -451,6 +451,7 @@ ULONG GetPixelDataSize(struct IFFPicture *picture);
 BOOL HasAlpha(struct IFFPicture *picture);
 BOOL IsHAM(struct IFFPicture *picture);
 BOOL IsEHB(struct IFFPicture *picture);
+BOOL IsFramestore(struct IFFPicture *picture);  /* TRUE if NewTek Video Toaster framestore (16-plane ILBM + PLTP) */
 BOOL IsCompressed(struct IFFPicture *picture);
 
 /* IFFImageInfo structure - aggregate of core image properties */
@@ -465,6 +466,7 @@ struct IFFImageInfo {
     BOOL hasAlpha;              /* TRUE if image has alpha channel */
     BOOL isHAM;                 /* TRUE if image uses HAM mode */
     BOOL isEHB;                 /* TRUE if image uses Extra Half-Brite mode */
+    BOOL isFramestore;          /* TRUE if NewTek Video Toaster framestore (16-plane ILBM + PLTP) */
     BOOL isCompressed;          /* TRUE if image data is compressed */
     BOOL isIndexed;             /* TRUE if image uses indexed color (palette) */
     BOOL isGrayscale;           /* TRUE if image is grayscale */

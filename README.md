@@ -90,6 +90,7 @@ iff2png source.iff target.png STRIP
 - **ACBM** (Amiga Continuous BitMap) - Format with separate alpha channel data in an ABIT chunk.
 - **YUVN** - YUV color space format for broadcast television (CCIR-601-2 standard). Stores luminance (Y) and color-difference signals (U, V) in separate chunks. Supports various YUV modes (400, 411, 422, 444, and lores variants). *Note: YUVN support is planned but not yet implemented.*
 - **FAXX** - Facsimile image format using ITU-T T.4 compression (Modified Huffman, Modified READ, Modified Modified READ).
+- **ILBM Framestore** - NewTek VideoToaster's Framestore proprietary extensions to ILBM
 
 ### Output Information
 

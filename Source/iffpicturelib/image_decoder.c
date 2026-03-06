@@ -788,6 +788,234 @@ static LONG DecompressByteRun1(struct IFFHandle *iff, UBYTE *dest, LONG destByte
 }
 
 /*
+** UnpackByteRun1Buffer - Decompress ByteRun1 (PackBits) from memory buffer.
+** Returns: RETURN_OK on success, RETURN_FAIL on error.
+*/
+static LONG UnpackByteRun1Buffer(const UBYTE *src, ULONG srcLen, UBYTE *dest, ULONG destLen)
+{
+    ULONG inPos = 0;
+    ULONG outPos = 0;
+    UBYTE n;
+    ULONG count;
+    UBYTE val;
+
+    while (inPos < srcLen && outPos < destLen) {
+        n = src[inPos++];
+        if (n <= 127) {
+            count = (ULONG)(n + 1);
+            if (inPos + count > srcLen || outPos + count > destLen) return RETURN_FAIL;
+            CopyMem((APTR)(src + inPos), dest + outPos, count);
+            inPos += count;
+            outPos += count;
+        } else if (n != 128) {
+            count = 257 - (ULONG)n;
+            if (inPos >= srcLen || outPos + count > destLen) return RETURN_FAIL;
+            val = src[inPos++];
+            while (count-- > 0) dest[outPos++] = val;
+        }
+    }
+    return (outPos == destLen) ? RETURN_OK : RETURN_FAIL;
+}
+
+/* Video Toaster Framestore constants (quadrature YCbCr decode) */
+#define VT_Y_SCALE   1.8351
+#define VT_Y_OFFSET  123.25
+#define VT_CB_COS    (-0.5776)
+#define VT_CB_SIN    0.8752
+#define VT_CR_COS    0.6313
+#define VT_CR_SIN    0.5039
+#define VT_R_CR      1.402
+#define VT_G_CB      (-0.344136)
+#define VT_G_CR      (-0.714136)
+#define VT_B_CB      1.772
+
+/*
+** decode_framestore_row - Decode one scanline of 16 bitplanes into comp6 and comp7.
+*/
+static VOID decode_framestore_row(const UBYTE *raw_body, UWORD width, UWORD height,
+    UWORD row_bytes, UWORD y, UBYTE *comp6_row, UBYTE *comp7_row)
+{
+    ULONG row_start;
+    UWORD x;
+    ULONG byte_idx;
+    UWORD bit_shift;
+    UWORD p;
+    UBYTE comp6;
+    UBYTE comp7;
+
+    row_start = (ULONG)y * row_bytes * VT_FRAMESTORE_NPLANES;
+    for (x = 0; x < width; x++) {
+        byte_idx = x >> 3;
+        bit_shift = 7 - (x & 7);
+        comp6 = 0;
+        for (p = 0; p <= 7; p++) {
+            if ((raw_body[row_start + p * row_bytes + byte_idx] >> bit_shift) & 1)
+                comp6 |= (UBYTE)(1 << (7 - p));
+        }
+        comp7 = 0;
+        for (p = 8; p <= 15; p++) {
+            if ((raw_body[row_start + p * row_bytes + byte_idx] >> bit_shift) & 1)
+                comp7 |= (UBYTE)(1 << (15 - p));
+        }
+        comp6_row[x] = comp6;
+        comp7_row[x] = comp7;
+    }
+}
+
+/*
+** framestore_row_to_rgb - Convert one row comp6/comp7 to RGB (quadrature chroma, BT.601).
+*/
+static VOID framestore_row_to_rgb(UWORD width, UWORD y,
+    const UBYTE *comp6_row, const UBYTE *comp7_row, UBYTE *rgb_row)
+{
+    double row_sign;
+    UWORD x;
+    UWORD x0;
+    double diff_signed[4];
+    double cos_comp;
+    double sin_comp;
+    double Cb;
+    double Cr;
+    double Y_raw;
+    double Y_disp;
+    double R, G, B;
+    LONG r, g, b;
+
+    row_sign = ((y % 4) == 0 || (y % 4) == 3) ? -1.0 : 1.0;
+    for (x0 = 0; x0 < width; x0 += 4) {
+        if (x0 + 4 <= width) {
+            diff_signed[0] = row_sign * (double)((LONG)comp6_row[x0+0] - (LONG)comp7_row[x0+0]);
+            diff_signed[1] = row_sign * (double)((LONG)comp6_row[x0+1] - (LONG)comp7_row[x0+1]);
+            diff_signed[2] = row_sign * (double)((LONG)comp6_row[x0+2] - (LONG)comp7_row[x0+2]);
+            diff_signed[3] = row_sign * (double)((LONG)comp6_row[x0+3] - (LONG)comp7_row[x0+3]);
+            cos_comp = (diff_signed[0] - diff_signed[2]) * 0.5;
+            sin_comp = (diff_signed[1] - diff_signed[3]) * 0.5;
+        } else {
+            cos_comp = 0.0;
+            sin_comp = 0.0;
+            if (x0 + 1 <= width)
+                cos_comp = row_sign * (double)((LONG)comp6_row[x0] - (LONG)comp7_row[x0]) * 0.5;
+            if (x0 + 2 <= width)
+                sin_comp = row_sign * (double)((LONG)comp6_row[x0+1] - (LONG)comp7_row[x0+1]) * 0.5;
+        }
+        Cb = VT_CB_COS * cos_comp + VT_CB_SIN * sin_comp;
+        Cr = VT_CR_COS * cos_comp + VT_CR_SIN * sin_comp;
+        for (x = x0; x < x0 + 4 && x < width; x++) {
+            Y_raw = ((double)comp6_row[x] + (double)comp7_row[x]) * 0.5;
+            Y_disp = VT_Y_SCALE * Y_raw - VT_Y_OFFSET;
+            if (Y_disp < 0.0) Y_disp = 0.0;
+            if (Y_disp > 255.0) Y_disp = 255.0;
+            R = Y_disp + VT_R_CR * Cr;
+            G = Y_disp + VT_G_CB * Cb + VT_G_CR * Cr;
+            B = Y_disp + VT_B_CB * Cb;
+            if (R < 0.0) R = 0.0; if (R > 255.0) R = 255.0;
+            if (G < 0.0) G = 0.0; if (G > 255.0) G = 255.0;
+            if (B < 0.0) B = 0.0; if (B > 255.0) B = 255.0;
+            r = (LONG)R; g = (LONG)G; b = (LONG)B;
+            rgb_row[x * 3 + 0] = (UBYTE)r;
+            rgb_row[x * 3 + 1] = (UBYTE)g;
+            rgb_row[x * 3 + 2] = (UBYTE)b;
+        }
+    }
+}
+
+/*
+** DecodeFramestore - Decode NewTek Video Toaster framestore (16-plane ILBM + PLTP) to RGB.
+** Returns: RETURN_OK on success, RETURN_FAIL on error.
+** Format: BMHD nPlanes==16, PLTP maps planes 0-7 to component 6, 8-15 to component 7.
+** Luma from (comp6+comp7)/2, chroma from quadrature (comp6-comp7); BT.601 RGB.
+*/
+LONG DecodeFramestore(struct IFFPicture *picture)
+{
+    UWORD width, height;
+    UWORD rowBytes;
+    ULONG rawLen;
+    UBYTE *bodyBuf;
+    UBYTE *rawBody;
+    UBYTE *comp6_row;
+    UBYTE *comp7_row;
+    UBYTE *rgb_row;
+    UWORD y;
+    LONG bytesRead;
+    LONG result;
+
+    if (!picture || !picture->bmhd || !picture->pltp) {
+        SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing BMHD or PLTP for Framestore decoding");
+        return RETURN_FAIL;
+    }
+    width = picture->bmhd->w;
+    height = picture->bmhd->h;
+    if (picture->bmhd->nPlanes != VT_FRAMESTORE_NPLANES) {
+        SetIFFPictureError(picture, IFFPICTURE_INVALID, "Framestore requires 16 bitplanes");
+        return RETURN_FAIL;
+    }
+    rowBytes = RowBytes(width);
+    rawLen = (ULONG)height * VT_FRAMESTORE_NPLANES * rowBytes;
+
+    bodyBuf = (UBYTE *)AllocMem(picture->bodyChunkSize, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!bodyBuf) {
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate BODY buffer for Framestore");
+        return RETURN_FAIL;
+    }
+    bytesRead = ReadChunkBytes(picture->iff, bodyBuf, picture->bodyChunkSize);
+    if (bytesRead != (LONG)picture->bodyChunkSize) {
+        FreeMem(bodyBuf, picture->bodyChunkSize);
+        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read BODY for Framestore");
+        return RETURN_FAIL;
+    }
+
+    rawBody = (UBYTE *)AllocMem(rawLen, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!rawBody) {
+        FreeMem(bodyBuf, picture->bodyChunkSize);
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate decompression buffer for Framestore");
+        return RETURN_FAIL;
+    }
+    if (picture->bmhd->compression == cmpByteRun1) {
+        result = UnpackByteRun1Buffer(bodyBuf, picture->bodyChunkSize, rawBody, rawLen);
+        FreeMem(bodyBuf, picture->bodyChunkSize);
+        if (result != RETURN_OK) {
+            FreeMem(rawBody, rawLen);
+            SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed for Framestore");
+            return RETURN_FAIL;
+        }
+    } else {
+        if (picture->bodyChunkSize != rawLen) {
+            FreeMem(rawBody, rawLen);
+            FreeMem(bodyBuf, picture->bodyChunkSize);
+            SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Uncompressed BODY size mismatch for Framestore");
+            return RETURN_FAIL;
+        }
+        FreeMem(rawBody, rawLen);
+        rawBody = bodyBuf;  /* Use BODY buffer as raw data; free at end */
+    }
+
+    comp6_row = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+    comp7_row = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+    rgb_row = (UBYTE *)AllocMem((ULONG)width * 3, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!comp6_row || !comp7_row || !rgb_row) {
+        if (comp6_row) FreeMem(comp6_row, width);
+        if (comp7_row) FreeMem(comp7_row, width);
+        if (rgb_row) FreeMem(rgb_row, (ULONG)width * 3);
+        FreeMem(rawBody, rawLen);
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate row buffers for Framestore");
+        return RETURN_FAIL;
+    }
+
+    for (y = 0; y < height; y++) {
+        decode_framestore_row(rawBody, width, height, rowBytes, y, comp6_row, comp7_row);
+        framestore_row_to_rgb(width, y, comp6_row, comp7_row, rgb_row);
+        CopyMem(rgb_row, picture->pixelData + (ULONG)y * width * 3, (ULONG)width * 3);
+    }
+
+    FreeMem(comp6_row, width);
+    FreeMem(comp7_row, width);
+    FreeMem(rgb_row, (ULONG)width * 3);
+    FreeMem(rawBody, rawLen);
+    picture->hasAlpha = FALSE;
+    return RETURN_OK;
+}
+
+/*
 ** DecodeILBM - Decode ILBM format to RGB (internal)
 ** Returns: RETURN_OK on success, RETURN_FAIL on error
 **

@@ -25,6 +25,7 @@
 #define ID_FLOG    0x464C4F47UL  /* 'FLOG' */
 #define ID_GPHD    0x47504844UL  /* 'GPHD' */
 #define ID_PCHG    0x50434847UL  /* 'PCHG' */
+#define ID_PLTP    0x504C5450UL  /* 'PLTP' - NewTek Video Toaster bitplane-to-component mapping */
 #define ID_SHAM    0x5348414DUL  /* 'SHAM' */
 #define ID_CTBL    0x4354424CUL  /* 'CTBL' */
 #define ID_CLUT    0x434C5554UL  /* 'CLUT' */
@@ -109,6 +110,12 @@
 #define HAMCODE_BLUE    1
 #define HAMCODE_RED     2
 #define HAMCODE_GREEN   3
+
+/* NewTek Video Toaster Framestore (16-plane ILBM with PLTP) */
+#define VT_FRAMESTORE_NPLANES  16
+#define VT_PLTP_COMP6          6
+#define VT_PLTP_COMP7          7
+#define VT_PLTP_SIZE           32
 
 /* IFFPictureMeta structure - metadata storage, allocated on demand */
 struct IFFPictureMeta {
@@ -197,6 +204,7 @@ struct IFFPicture {
     BOOL isCompressed;
     BOOL isIndexed;
     BOOL isGrayscale;
+    BOOL isFramestore;   /* TRUE if NewTek Video Toaster framestore (ILBM 16-plane + PLTP 6/7) */
     
     /* Private members - internal to library */
     struct IFFHandle *iff;
@@ -222,6 +230,9 @@ struct IFFPicture {
     struct DCHGHeader *dchg;      /* DEEP change buffer (for animation) */
     struct TVDCHeader *tvdc;       /* TVPaint compression table */
     
+    /* Video Toaster Framestore: PLTP chunk (32 bytes), NULL if not present */
+    UBYTE *pltp;
+    
     /* Metadata storage - allocated on demand */
     struct IFFPictureMeta *metadata;    /* Metadata structure, NULL if no metadata */
 };
@@ -230,6 +241,7 @@ struct IFFPicture {
 LONG DecodeILBM(struct IFFPicture *picture);
 LONG DecodeHAM(struct IFFPicture *picture);
 LONG DecodeEHB(struct IFFPicture *picture);
+LONG DecodeFramestore(struct IFFPicture *picture);
 LONG DecodeDEEP(struct IFFPicture *picture);
 LONG DecodePBM(struct IFFPicture *picture);
 LONG DecodeRGBN(struct IFFPicture *picture);
@@ -245,6 +257,9 @@ VOID ReadAllMeta(struct IFFPicture *picture);
 /* FAXX chunk reader function prototypes - declared in iffpicture.c */
 LONG ReadGPHD(struct IFFPicture *picture);
 LONG ReadFLOG(struct IFFPicture *picture);
+
+/* Video Toaster Framestore: ReadPLTP - declared in iffpicture.c */
+LONG ReadPLTP(struct IFFPicture *picture);
 
 /* DEEP chunk reader function prototypes - declared in iffpicture.c */
 LONG ReadDGBL(struct IFFPicture *picture);

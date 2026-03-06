@@ -124,10 +124,10 @@ LONG AnalyzeFormat(struct IFFPicture *picture)
     } else if (!picture->isIndexed && picture->bmhd->nPlanes == 1) {
         /* 1-bit non-indexed images are typically grayscale */
         picture->isGrayscale = TRUE;
-    } else if (picture->formtype == ID_RGBN || 
+    } else if (picture->isFramestore || picture->formtype == ID_RGBN ||
                picture->formtype == ID_RGB8 || picture->isHAM ||
                (picture->formtype == ID_ILBM && picture->bmhd->nPlanes == 24)) {
-        /* True-color formats are not grayscale by default */
+        /* True-color formats (including Video Toaster framestore) are not grayscale by default */
         picture->isGrayscale = FALSE;
     }
     
@@ -215,8 +215,8 @@ LONG GetOptimalPNGConfig(struct IFFPicture *picture, struct PNGConfig *config, B
     config->num_trans = 0;
     
     /* Determine optimal PNG format based on image characteristics */
-    /* 24-bit ILBM (nPlanes == 24) is true-color, not indexed */
-    if (picture->isHAM || picture->isEHB || 
+    /* 24-bit ILBM (nPlanes == 24) and Video Toaster framestore are true-color, not indexed */
+    if (picture->isFramestore || picture->isHAM || picture->isEHB ||
         picture->formtype == ID_RGBN || picture->formtype == ID_RGB8 ||
         (picture->formtype == ID_ILBM && picture->bmhd->nPlanes == 24)) {
         /* True-color formats - use RGB or RGBA */

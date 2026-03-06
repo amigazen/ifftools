@@ -24,6 +24,7 @@ LONG ReadBODY(struct IFFPicture *picture);
 LONG ReadABIT(struct IFFPicture *picture);
 LONG ReadFXHD(struct IFFPicture *picture);
 LONG ReadPAGE(struct IFFPicture *picture);
+LONG ReadPLTP(struct IFFPicture *picture);
 LONG ReadDGBL(struct IFFPicture *picture);
 LONG ReadDPEL(struct IFFPicture *picture);
 LONG ReadDLOC(struct IFFPicture *picture);
@@ -31,6 +32,7 @@ LONG ReadDBOD(struct IFFPicture *picture);
 LONG ReadDCHG(struct IFFPicture *picture);
 LONG ReadTVDC(struct IFFPicture *picture);
 static VOID FreeIFFPictureMeta(struct IFFPictureMeta *meta);
+static BOOL PLTPIsVTFramestore(const UBYTE *pltp);
 
 /*
 ** AllocIFFPicture - Allocate a new IFFPicture object
@@ -116,6 +118,12 @@ VOID FreeIFFPicture(struct IFFPicture *picture)
     if (picture->ychd) {
         FreeMem(picture->ychd, sizeof(struct YCHDHeader));
         picture->ychd = NULL;
+    }
+    
+    /* Free Video Toaster PLTP */
+    if (picture->pltp) {
+        FreeMem(picture->pltp, VT_PLTP_SIZE);
+        picture->pltp = NULL;
     }
     
     /* Free DEEP headers */
@@ -480,6 +488,7 @@ LONG ParseIFFPicture(struct IFFPicture *picture)
         }
         PropChunk(picture->iff, formType, ID_CMAP);
         PropChunk(picture->iff, formType, ID_CAMG);
+        PropChunk(picture->iff, formType, ID_PLTP);  /* Optional: NewTek Video Toaster framestore */
         /* Metadata chunks (optional) - single instance */
         PropChunk(picture->iff, formType, ID_GRAB);
         PropChunk(picture->iff, formType, ID_DEST);
@@ -718,9 +727,16 @@ LONG ParseIFFPicture(struct IFFPicture *picture)
         }
         ReadCMAP(picture); /* CMAP is optional, don't fail if missing */
         ReadCAMG(picture); /* CAMG is optional, don't fail if missing */
+        ReadPLTP(picture); /* PLTP optional: NewTek Video Toaster framestore */
         
         /* 24-bit ILBM (nPlanes == 24) is true-color, not indexed */
         if (formType == ID_ILBM && picture->bmhd && picture->bmhd->nPlanes == 24) {
+            picture->isIndexed = FALSE;
+        }
+        /* NewTek Video Toaster framestore: 16-plane ILBM with PLTP mapping planes to component 6/7 */
+        if (formType == ID_ILBM && picture->bmhd && picture->bmhd->nPlanes == VT_FRAMESTORE_NPLANES &&
+            picture->pltp && PLTPIsVTFramestore(picture->pltp)) {
+            picture->isFramestore = TRUE;
             picture->isIndexed = FALSE;
         }
         
@@ -911,6 +927,14 @@ BOOL IsEHB(struct IFFPicture *picture)
     return picture->isEHB;
 }
 
+BOOL IsFramestore(struct IFFPicture *picture)
+{
+    if (!picture) {
+        return FALSE;
+    }
+    return picture->isFramestore;
+}
+
 BOOL IsCompressed(struct IFFPicture *picture)
 {
     if (!picture) {
@@ -944,6 +968,7 @@ struct IFFImageInfo *GetImageInfo(struct IFFPicture *picture)
     info.hasAlpha = HasAlpha(picture);
     info.isHAM = IsHAM(picture);
     info.isEHB = IsEHB(picture);
+    info.isFramestore = IsFramestore(picture);
     info.isCompressed = IsCompressed(picture);
     info.isIndexed = picture->isIndexed;
     info.isGrayscale = picture->isGrayscale;
@@ -1646,6 +1671,55 @@ LONG ReadPAGE(struct IFFPicture *picture)
     picture->bodyChunkSize = cn->cn_Size;
     picture->bodyChunkPosition = 0; /* We're positioned at start of PAGE chunk */
     
+    return RETURN_OK;
+}
+
+/*
+** PLTPIsVTFramestore - Check if PLTP (32 bytes) maps planes 0-7 to component 6 and 8-15 to 7.
+** Returns: TRUE if valid Video Toaster framestore PLTP.
+*/
+static BOOL PLTPIsVTFramestore(const UBYTE *pltp)
+{
+    ULONG i;
+    for (i = 0; i < 8; i++) {
+        if (pltp[i * 2] != VT_PLTP_COMP6) return FALSE;
+    }
+    for (i = 8; i < 16; i++) {
+        if (pltp[i * 2] != VT_PLTP_COMP7) return FALSE;
+    }
+    return TRUE;
+}
+
+/*
+** ReadPLTP - Read PLTP chunk (NewTek Video Toaster bitplane-to-component mapping)
+** Returns: RETURN_OK on success or if chunk absent; RETURN_FAIL on error.
+** Optional chunk: 32 bytes. If present and valid, used to detect framestore format.
+*/
+LONG ReadPLTP(struct IFFPicture *picture)
+{
+    struct StoredProperty *sp;
+    UBYTE *pltp;
+    
+    if (!picture || !picture->iff) {
+        if (picture) {
+            SetIFFPictureError(picture, IFFPICTURE_INVALID, "Invalid picture or IFF handle");
+        }
+        return RETURN_FAIL;
+    }
+    
+    sp = FindProp(picture->iff, picture->formtype, ID_PLTP);
+    if (!sp || sp->sp_Size < VT_PLTP_SIZE) {
+        picture->pltp = NULL;
+        return RETURN_OK;  /* Optional */
+    }
+    
+    pltp = (UBYTE *)AllocMem(VT_PLTP_SIZE, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!pltp) {
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate PLTP buffer");
+        return RETURN_FAIL;
+    }
+    CopyMem(sp->sp_Data, pltp, VT_PLTP_SIZE);
+    picture->pltp = pltp;
     return RETURN_OK;
 }
 
@@ -2517,7 +2591,9 @@ LONG Decode(struct IFFPicture *picture)
     /* Dispatch to format-specific decoder */
     switch (picture->formtype) {
         case ID_ILBM:
-            if (picture->isHAM) {
+            if (picture->isFramestore) {
+                result = DecodeFramestore(picture);
+            } else if (picture->isHAM) {
                 result = DecodeHAM(picture);
             } else if (picture->isEHB) {
                 result = DecodeEHB(picture);
