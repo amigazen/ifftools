@@ -219,7 +219,7 @@ int main(int argc, char **argv)
             PutStr((STRPTR)sourceFile);
             PutStr("\n");
             PutStr("  ");
-            PutStr((STRPTR)GetErrorString(picture));
+            PutStr((STRPTR)IFFPictureErrorString(picture));
             PutStr("\n");
             /* Close file handle - user responsibility per iffparse pattern */
             Close(filehandle);
@@ -236,7 +236,7 @@ int main(int argc, char **argv)
             PutStr((STRPTR)sourceFile);
             PutStr("\n");
             PutStr("  ");
-            PutStr((STRPTR)GetErrorString(picture));
+            PutStr((STRPTR)IFFPictureErrorString(picture));
             PutStr("\n");
             CloseIFFPicture(picture);
             Close(filehandle); /* Close file handle after CloseIFFPicture() */
@@ -250,7 +250,7 @@ int main(int argc, char **argv)
         result = AnalyzeFormat(picture);
         if (result != RETURN_OK) {
             PutStr("Error: Cannot analyze image format: ");
-            PutStr((STRPTR)GetErrorString(picture));
+            PutStr((STRPTR)IFFPictureErrorString(picture));
             PutStr("\n");
             CloseIFFPicture(picture);
             Close(filehandle); /* Close file handle after CloseIFFPicture() */
@@ -264,7 +264,7 @@ int main(int argc, char **argv)
         result = DecodeToRGB(picture, &rgbData, &rgbSize);
         if (result != RETURN_OK) {
             PutStr("Error: Cannot decode image: ");
-            PutStr((STRPTR)GetErrorString(picture));
+            PutStr((STRPTR)IFFPictureErrorString(picture));
             PutStr("\n");
             CloseIFFPicture(picture);
             Close(filehandle); /* Close file handle after CloseIFFPicture() */

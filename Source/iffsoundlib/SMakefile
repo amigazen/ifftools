@@ -1,0 +1,59 @@
+######################################################################
+# SMakefile for iffsound.lib
+# Build with SAS/C compiler
+######################################################################
+
+TARGET = iffsound.lib
+
+# Library objects
+OBJS = iffsound.o sound_decoder.o sound_analyzer.o metadata_reader.o audio_converter.o aiff_decompressor.o utils.o
+
+# Uncomment the next line to enable debug output:
+# DEBUG_FLAG = DEFINE=DEBUG
+
+CFLAGS = DATA=NEAR CODE=NEAR PARAMETERS=REGISTERS NOSTACKCHECK \
+         STRUCTUREEQUIVALENCE OPTIMIZE NOICONS MATH=IEEE MAP NOVERSION \
+         UTILITYLIBRARY INCLUDEDIR=include: \
+         INCLUDEDIR=. $(DEBUG_FLAG)
+
+# Default rule
+all: $(TARGET)
+
+# Build the library
+$(TARGET): $(OBJS)
+	oml $(TARGET) r $(OBJS)
+	@echo "IFFSound library built successfully"
+
+# Compile library sources
+iffsound.o: iffsound.c iffsound.h iffsound_private.h
+	sc $(CFLAGS) OBJNAME=$@ iffsound.c
+
+sound_decoder.o: sound_decoder.c iffsound_private.h
+	sc $(CFLAGS) OBJNAME=$@ sound_decoder.c
+
+sound_analyzer.o: sound_analyzer.c iffsound_private.h
+	sc $(CFLAGS) OBJNAME=$@ sound_analyzer.c
+
+metadata_reader.o: metadata_reader.c iffsound_private.h
+	sc $(CFLAGS) OBJNAME=$@ metadata_reader.c
+
+audio_converter.o: audio_converter.c iffsound_private.h
+	sc $(CFLAGS) OBJNAME=$@ audio_converter.c
+
+aiff_decompressor.o: aiff_decompressor.c iffsound_private.h
+	sc $(CFLAGS) OBJNAME=$@ aiff_decompressor.c
+
+utils.o: utils.c iffsound_private.h
+	sc $(CFLAGS) OBJNAME=$@ utils.c
+
+# Clean up
+clean:
+	-delete $(OBJS) $(TARGET)
+
+# Install to system library directory
+install: $(TARGET)
+	-copy $(TARGET) /SDK/lib/$(TARGET) CLONE
+	-copy iffsound.h /SDK/Include_h/iffsound.h CLONE
+
+.PHONY: all clean install
+

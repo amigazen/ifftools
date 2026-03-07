@@ -22,7 +22,7 @@ zlib and libpng can be found in their respective directories, with their own sma
 
 If changing the math target from the current IEEE setting, make sure to change all 3 components and rebuild.
 
-### Build Commands
+### Building iff2png
 
 You must build in this order-> zlib -> libpng -> iff2png
 
@@ -34,10 +34,22 @@ cd /libpng
 smake
 
 cd /
-smake
+smake iff2png
 smake install
 ```
 
+### Building iff2aiff
+
+You must build in this order-> iffsound.lib -> iff2aiff
+
+```
+cd Source/iffsoundlib
+smake
+
+cd /
+smake iff2aiff
+smake install
+
 ## Installation
 
-1. Find the iff2png executable in SDK/C/ in this distribution and copy it to wherever you want to usually run it from
+1. Find the iff2png and iff2aiff executables in SDK/C/ in this distribution and copy it to wherever you want to usually run it from

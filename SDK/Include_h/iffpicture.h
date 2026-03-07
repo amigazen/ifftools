@@ -608,17 +608,18 @@ ULONG BestPictureModeID(struct IFFPicture *picture, struct ViewPort *sourceViewP
 
 /* Error Handling Functions
  *
- * GetLastError() - Returns the last error code that occurred during an
- *                  IFFPicture operation. Error codes are negative values
- *                  (IFFPICTURE_* constants) or 0 for success.
+ * IFFPictureError() - Returns the last error code that occurred during an
+ *                     IFFPicture operation. Error codes are negative values
+ *                     (IFFPICTURE_* constants) or 0 for success.
  *
- * GetErrorString() - Returns a pointer to a null-terminated string describing
- *                    the last error. The string is stored in the IFFPicture
- *                    structure and remains valid until the next operation
- *                    or until the IFFPicture is freed.
+ * IFFPictureErrorString() - Returns a pointer to a null-terminated string
+ *                            describing the last error. The string is stored
+ *                            in the IFFPicture structure and remains valid
+ *                            until the next operation or until the IFFPicture
+ *                            is freed.
  */
-LONG GetLastError(struct IFFPicture *picture);
-const char *GetErrorString(struct IFFPicture *picture);
+LONG IFFPictureError(struct IFFPicture *picture);
+const char *IFFPictureErrorString(struct IFFPicture *picture);
 
 /*****************************************************************************/
 
@@ -961,10 +962,10 @@ struct TVDCHeader {
  *
  * These constants represent error conditions that can occur during IFFPicture
  * operations. Functions return 0 for success or one of these negative values
- * for errors. Use GetErrorString() to get a human-readable error message.
+ * for errors. Use IFFPictureErrorString() to get a human-readable error message.
  *
  * IFFPICTURE_OK          - Operation completed successfully
- * IFFPICTURE_ERROR       - General error (check GetErrorString() for details)
+ * IFFPICTURE_ERROR       - General error (check IFFPictureErrorString() for details)
  * IFFPICTURE_NOMEM       - Memory allocation failed
  * IFFPICTURE_BADFILE     - File I/O error or invalid IFF file structure
  * IFFPICTURE_UNSUPPORTED - Image format or feature not supported

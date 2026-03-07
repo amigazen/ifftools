@@ -2677,9 +2677,9 @@ LONG DecodeToRGB(struct IFFPicture *picture, UBYTE **rgbData, ULONG *size)
 */
 
 /*
-** GetLastError - Get last error code
+** IFFPictureError - Get last error code
 */
-LONG GetLastError(struct IFFPicture *picture)
+LONG IFFPictureError(struct IFFPicture *picture)
 {
     if (!picture) {
         return IFFPICTURE_INVALID;
@@ -2688,9 +2688,9 @@ LONG GetLastError(struct IFFPicture *picture)
 }
 
 /*
-** GetErrorString - Get last error message
+** IFFPictureErrorString - Get last error message
 */
-const char *GetErrorString(struct IFFPicture *picture)
+const char *IFFPictureErrorString(struct IFFPicture *picture)
 {
     if (!picture) {
         return "Invalid picture object";

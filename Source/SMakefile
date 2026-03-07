@@ -1,15 +1,18 @@
 ######################################################################
-# SMakefile for iff2png
+# SMakefile for iff2png and iff2aiff
 # Build with SAS/C compiler
 ######################################################################
 
 TARGET = iff2png
+AIFF2AIFF_TARGET = iff2aiff
 LIBTARGET = iffpicture.lib
+SOUNDLIBTARGET = iffsoundlib/iffsound.lib
 ZLIBTARGET = zlib/z.lib
 PNGLIBTARGET = libpng/pnglib/libpng.lib
 
 # Main program objects
 MAIN_OBJS = main.o png_encoder.o
+AIFF2AIFF_OBJS = iff2aiff.o aiff_encoder.o
 
 # Library objects
 LIB_OBJS = iffpicturelib/iffpicture.o iffpicturelib/image_decoder.o \
@@ -26,9 +29,16 @@ CFLAGS = DATA=NEAR CODE=NEAR PARAMETERS=REGISTERS NOSTACKCHECK \
          INCLUDEDIR=libpng INCLUDEDIR=libpng/pnglib \
          INCLUDEDIR=zlib $(DEBUG_FLAG)
 
-LIBS = sc:lib/sc.lib LIB:amiga.lib sc:lib/scmieee.lib $(ZLIBTARGET) $(PNGLIBTARGET)
+# Flags for iff2aiff and aiff_encoder (need iffsoundlib, no libpng/zlib)
+CFLAGS_AIFF = DATA=NEAR CODE=NEAR PARAMETERS=REGISTERS NOSTACKCHECK \
+              STRUCTUREEQUIVALENCE OPTIMIZE MATH=IEEE NOICONS MAP NOVERSION \
+              UTILITYLIBRARY INCLUDEDIR=include: \
+              INCLUDEDIR=iffsoundlib $(DEBUG_FLAG)
 
-all: $(ZLIBTARGET) $(PNGLIBTARGET) $(LIBTARGET) $(TARGET)
+LIBS = sc:lib/sc.lib LIB:amiga.lib sc:lib/scmieee.lib $(ZLIBTARGET) $(PNGLIBTARGET)
+LIBS_AIFF = sc:lib/sc.lib LIB:amiga.lib sc:lib/scmieee.lib $(SOUNDLIBTARGET)
+
+all: $(ZLIBTARGET) $(PNGLIBTARGET) $(LIBTARGET) $(TARGET) $(SOUNDLIBTARGET) $(AIFF2AIFF_TARGET)
 
 # Build zlib first
 $(ZLIBTARGET):
@@ -39,6 +49,11 @@ $(ZLIBTARGET):
 $(PNGLIBTARGET): $(ZLIBTARGET)
 	@echo "Building libpng..."
 	@cd libpng && smake -f smakefile libpng
+
+# Build iffsound library
+$(SOUNDLIBTARGET):
+	@echo "Building iffsound library..."
+	@cd iffsoundlib && smake -f SMakefile
 
 # Build iffpicture library
 $(LIBTARGET): $(LIB_OBJS)
@@ -52,12 +67,26 @@ $(TARGET): $(MAIN_OBJS) $(LIBTARGET)
 	slink FROM $(TARGET).ld TO $(TARGET) STRIPDEBUG NODEBUG
 	@protect $(TARGET) add p quiet
 
+# Build iff2aiff
+$(AIFF2AIFF_TARGET): $(AIFF2AIFF_OBJS) $(SOUNDLIBTARGET)
+	slink FROM sc:lib/c.o $(AIFF2AIFF_OBJS) LIB $(LIBS_AIFF) \
+	      TO $(AIFF2AIFF_TARGET).ld STRIPDEBUG
+	slink FROM $(AIFF2AIFF_TARGET).ld TO $(AIFF2AIFF_TARGET) STRIPDEBUG NODEBUG
+	@protect $(AIFF2AIFF_TARGET) add p quiet
+
 # Compile main program sources
 main.o: main.c main.h
 	sc $(CFLAGS) OBJNAME=$@ main.c
 
 png_encoder.o: png_encoder.c png_encoder.h main.h
 	sc $(CFLAGS) OBJNAME=$@ png_encoder.c
+
+# Compile iff2aiff sources
+iff2aiff.o: iff2aiff.c iff2aiff.h
+	sc $(CFLAGS_AIFF) OBJNAME=$@ iff2aiff.c
+
+aiff_encoder.o: aiff_encoder.c aiff_encoder.h
+	sc $(CFLAGS_AIFF) OBJNAME=$@ aiff_encoder.c
 
 # Compile library sources
 iffpicturelib/iffpicture.o: iffpicturelib/iffpicture.c iffpicturelib/iffpicture.h iffpicturelib/iffpicture_private.h
@@ -80,10 +109,14 @@ iffpicturelib/utils.o: iffpicturelib/utils.c iffpicturelib/iffpicture_private.h
 
 clean:
 	-delete $(MAIN_OBJS) $(LIB_OBJS) $(TARGET) $(TARGET).ld $(LIBTARGET)
+	-delete $(AIFF2AIFF_OBJS) $(AIFF2AIFF_TARGET) $(AIFF2AIFF_TARGET).ld
 	@cd zlib && smake -f smakefile clean
 	@cd libpng && smake -f smakefile clean
+	@cd iffsoundlib && smake -f SMakefile clean
 
 install:
 	-copy iff2png /SDK/C/iff2png CLONE
 	-copy iffpicture.lib /SDK/lib/iffpicture.lib CLONE
 	-copy iffpicturelib/iffpicture.h /SDK/Include_h/iffpicture.h CLONE
+	-copy iff2aiff /SDK/C/iff2aiff CLONE
+	@cd iffsoundlib && smake -f SMakefile install
