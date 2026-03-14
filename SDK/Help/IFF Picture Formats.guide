@@ -1,0 +1,270 @@
+@DATABASE "IFF Picture Formats.guide"
+@AUTHOR "amigazen project"
+@HELP "main"
+@INDEX "index"
+
+@NODE "main" "IFF Picture Formats - Reference"
+Comprehensive reference for IFF bitmap picture format structure, encoding, and decoding algorithms. Covers all FORM types used for images on Amiga and compatible systems.
+
+@{"Introduction" LINK "intro"}
+@{"IFF Container" LINK "container"}
+@{"ILBM (Interleaved Bitmap)" LINK "ilbm"}
+@{"PBM (Packed Bitmap)" LINK "pbm"}
+@{"RGBN and RGB8" LINK "rgbn"}
+@{"DEEP (Chunky Pixels)" LINK "deep"}
+@{"ACBM (Alpha Channel)" LINK "acbm"}
+@{"FAXX (Facsimile)" LINK "faxx"}
+@{"YUVN (YUV Broadcast)" LINK "yuvn"}
+@{"Video Toaster Framestore" LINK "framestore"}
+@{"Compression Algorithms" LINK "compression"}
+@{"Metadata Chunks" LINK "metadata"}
+@{"References" LINK "refs"}
+@{"Index" LINK "index"}
+@ENDNODE
+
+@NODE "intro" "Introduction"
+IFF Picture Formats
+
+IFF (Interchange File Format) is the standard container for multimedia on Amiga. Picture FORMs store raster images; each FORM type has a specific chunk layout and pixel encoding. This guide documents every IFF picture format in detail: chunk structures, byte layout, compression, and decoding algorithms.
+
+Sources: EA IFF 85, Commodore/Amiga revisions, example folder specs (ILBM, DEEP, RGB8, YUVN, FAXX), FramestoreDT Video Toaster spec, and iff2png IFFPicture library implementation.
+
+@{"Main" LINK "main"}
+@{"IFF Container basics" LINK "container"}
+@ENDNODE
+
+@NODE "container" "IFF Container Basics"
+IFF Picture Formats
+
+Every IFF file starts with:
+? FORM header: 4 bytes 'FORM', 4-byte big-endian length (of everything after these 8 bytes)
+? Form type: 4 bytes (e.g. 'ILBM', 'PBM', 'DEEP')
+? Chunks: sequence of chunk ID (4 bytes) + length (4 bytes big-endian) + data (length bytes). If length is odd, a pad byte follows so next chunk is word-aligned.
+
+Chunk order: Property chunks (BMHD, CMAP, etc.) typically come before the main data chunk (BODY, PAGE, DBOD, etc.). Parsers scan until they find the chunks they need; unknown chunks are skipped by seeking length (+1 if odd).
+
+All multi-byte values in IFF are big-endian.
+@{"Main" LINK "main"}
+@ENDNODE
+
+@NODE "ilbm" "ILBM - Interleaved Bitmap"
+IFF Picture Formats
+
+FORM ILBM is the standard Amiga bitmap format. One required property (BMHD), one main data chunk (BODY), and optional properties (CMAP, CAMG, GRAB, DEST, SPRT, CRNG, etc.).
+
+BMHD (Bitmap Header) - required, 20 bytes:
+? Offset 0-1: w (width), 2-3: h (height) - UWORD big-endian
+? Offset 4-7: x, y (position) - WORD big-endian
+? Offset 8: nPlanes (1-8 standard; 24 for deep/true-color ILBM)
+? Offset 9: masking - 0=None, 1=HasMask, 2=TransparentColor, 3=Lasso
+? Offset 10: compression - 0=None, 1=ByteRun1 per row, 2=ByteRun1 per column
+? Offset 11: pad (0)
+? Offset 12-13: transparentColor (UWORD)
+? Offset 14-15: xAspect, yAspect (pixel aspect ratio)
+? Offset 16-19: pageWidth, pageHeight (WORD)
+
+CMAP - optional. RGB triplets: 3 bytes per colour (R,G,B 0-255). Number of colours = chunk size/3. Normally 2^nPlanes entries.
+
+BODY - pixel data. Interleaved by row: for each scanline, one row from plane 0, then plane 1, ... plane n-1, then mask row if masking=HasMask. Each row is ((w+15)/16)*2 bytes (word-aligned). Bits MSB first within bytes. If compression=1, each row is ByteRun1 compressed independently. If compression=2, ByteRun1 is applied per column: for each column x, for each plane p, one RLE stream of height bytes; decode then reorder to row-major for display.
+
+24-bit ILBM: nPlanes=24, no CMAP. Default bit order R0..R7 G0..G7 B0..B7 (plane 0 = MSB). Alternative NewTek 21-bit order: R7G7B7 R6G6B6 ... R0G0B0 (interleaved MSB first).
+
+HAM (Hold And Modify): 6 planes. Planes 0-3 = colour register index; planes 4-5 = modifier: 00=use register, 01=hold previous replace Red, 10=replace Blue, 11=replace Green. First pixel of line uses border/register 0 as previous.
+
+EHB (Extra Half-Brite): 6 planes. Planes 0-4 = colour register; plane 5 = half-brite bit (1 = display at half brightness). 32 colours + 32 half-brite = 64 effective colours.
+
+CAMG chunk (4 bytes): Amiga viewport mode flags (e.g. HAM=0x0800, EHB=0x80, LACE=0x04, HIRES=0x8000). New Amiga may store 32-bit ModeID.
+
+CRNG (colour cycling): WORD pad; WORD rate (16384 = 60 steps/sec); WORD flags (1=active, 2=reverse); UBYTE low, high (register range).
+
+DEST (merge): UBYTE depth; UBYTE pad; UWORD planePick (1=source plane), planeOnOff (default), planeMask (1=write). Low depth bits map to destination planes.
+
+Words per row = (w+15)/16. Mask plane stored like an extra plane if masking=1.
+@{"Main" LINK "main"}
+@{"ByteRun1 compression" LINK "compression"}
+@{"Metadata chunks" LINK "metadata"}
+@ENDNODE
+
+@NODE "pbm" "PBM - Packed Bitmap"
+IFF Picture Formats
+
+FORM PBM is like ILBM but stores chunky pixels (one byte per pixel) instead of bitplanes. Same BMHD and CMAP usage; BODY layout differs.
+
+BMHD: Same as ILBM. nPlanes typically 8 (256 colours). masking and compression as per ILBM.
+
+BODY: For each scanline, width bytes of palette indices (one byte per pixel). No interleaving. If compression=1, each row is ByteRun1 compressed. Row length in bytes = width (uncompressed).
+
+PBM is not the same as NetPBM. Used for 8-bit chunky display on Amiga.
+@{"Main" LINK "main"}
+@ENDNODE
+
+@NODE "rgbn" "RGBN and RGB8"
+IFF Picture Formats
+
+FORM RGBN (12-bit RGB) and FORM RGB8 (24-bit RGB) - Impulse Turbo Silver / Imagine. Use BMHD and BODY with different semantics. CAMG is required.
+
+BMHD: For RGBN, nPlanes is often 13; for RGB8, 25. Compression type 4 (form-specific). Other fields as ILBM.
+
+BODY: Not bitplanes. Contains RGB values plus genlock bit and repeat counts. Pixels scanned left-to-right, top-to-bottom.
+
+RGBN BODY: For each run, a WORD: 12-bit RGB in MSBs (R4,G4,B4), genlock bit, 3-bit repeat count. If repeat > 7, 3-bit count is 0 and a BYTE count follows; if > 255, WORD count follows.
+
+RGB8 BODY: For each run, a LONG: 24-bit RGB in MSBs, genlock bit, 7-bit repeat count.
+
+Genlock bit: when set, "zero colour" for video overlay; when clear, use RGB. (Implementation-dependent.)
+@{"Main" LINK "main"}
+@ENDNODE
+
+@NODE "deep" "DEEP - Chunky Pixels"
+IFF Picture Formats
+
+FORM DEEP stores chunky pixels (consecutive memory per pixel) with flexible components (RGB, RGBA, YCM, etc.). No BMHD; DEEP uses its own chunks.
+
+Chunks (order): DGBL (required first), DPEL (required), optional DLOC, optional DCHG, optional TVDC, then DBOD (data). DGBL remains valid until next DGBL; DLOC remains valid until next DLOC.
+
+DGBL (8 bytes): DisplayWidth, DisplayHeight (UWORD); Compression (UWORD): 0=None, 1=RUNLENGTH, 2=HUFFMAN, 3=DYNAMICHUFF, 4=JPEG, 5=TVDC; xAspect, yAspect (UBYTE).
+
+DPEL: ULONG nElements; then nElements × (UWORD cType, UWORD cBitDepth). cType: 1=RED, 2=GREEN, 3=BLUE, 4=ALPHA, 5=YELLOW, 6=CYAN, 7=MAGENTA, 8=BLACK, 9=MASK, 10=ZBUFFER, 11=OPACITY, 12=LINEARKEY, 13=BINARYKEY. Elements stored in order, MSB first; pixel padded to byte boundary; DBOD padded to longword.
+
+DLOC (optional, 8 bytes): w, h (UWORD); x, y (WORD). Body dimensions and position. If absent, use DGBL DisplayWidth/Height.
+
+DBOD: Raw pixel data, compressed per DGBL. Layout: per scanline, for each DPEL element in order, one row of that element (line-by-line per element). Size from DLOC or DGBL.
+
+DCHG (optional): LONG FrameRate (ms between frames; 0=fast, -1=next frame non-animated). For animation.
+
+TVDC (optional, TVPaint): 16 × WORD delta table. Used when Compression=5. Compression is line-by-line per DPEL element; algorithm: 4-bit nibbles from source, add table[nibble] to running value; if table[nibble]==0, next nibble is run length of same value.
+@{"Main" LINK "main"}
+@{"Compression" LINK "compression"}
+@ENDNODE
+
+@NODE "acbm" "ACBM - Alpha Channel Bitmap"
+IFF Picture Formats
+
+FORM ACBM is like ILBM but the mask/alpha is stored in a separate chunk ABIT instead of interleaved in BODY.
+
+BMHD: Same as ILBM. masking is typically 0 or 1 (mask in ABIT).
+
+CMAP, CAMG, etc.: Same as ILBM.
+
+ABIT (instead of BODY): Alpha/mask plane data. Same row layout as one plane (word-aligned rows). If BMHD compression=1, each row of ABIT is ByteRun1 compressed. Size: height × ((width+15)/16)*2 bytes uncompressed.
+
+BODY in ACBM: Contains only the colour bitplanes (no interleaved mask). So BODY has nPlanes rows per scanline; ABIT has one row per scanline.
+@{"Main" LINK "main"}
+@ENDNODE
+
+@NODE "faxx" "FAXX - Facsimile Image"
+IFF Picture Formats
+
+FORM FAXX stores facsimile (fax) images. Uses FXHD and PAGE; optional FLOG, GPHD.
+
+FXHD (Fax Header): Width, Height (UWORD); LineLength (mm); VRes (lines/100mm); Compression (UBYTE): 0=None, 1=MH, 2=MR, 4=MMR; padding. Image dimensions and compression method.
+
+PAGE: Encoded fax data. Starts with EOL (0x001), ends with RTC (six EOLs). Data is bit-packed; compression per ITU-T T.4: MH (1D), MR (2D), MMR (Group 4). LineLength codes (mm): 215=1728 px, 255=2048, 303=2432, 151=1216/1728, 107=864/1728. VRes: 385 = 3.85 lines/mm (normal), 770 = 7.7 (fine).
+
+GPHD (optional): Alternative/extra header (e.g. GPSoftware) with page width/length codes, compression, date, etc.
+@{"Main" LINK "main"}
+@{"Compression" LINK "compression"}
+@ENDNODE
+
+@NODE "yuvn" "YUVN - YUV Broadcast"
+IFF Picture Formats
+
+FORM YUVN - MacroSystem VLab. YUV (CCIR-601-2) for broadcast. Chunks: YCHD (required), then DATY, DATU, DATV, optionally DATA (alpha).
+
+YCHD (24 bytes): ychd_Width, ychd_Height; ychd_PageWidth, ychd_PageHeight; ychd_LeftEdge, ychd_TopEdge; ychd_AspectX, ychd_AspectY; ychd_Compress (0=none); ychd_Flags (bit 0=LACE); ychd_Mode; ychd_Norm; reserved. Mode: 0=400 (B&W), 1=411, 2=422, 3=444, 8=200, 9=211, 10=222. Norm: 0=unknown, 1=PAL, 2=NTSC. Width must be multiple of 4 for 411, 2 for 422/211.
+
+DATY: Luminance Y, one byte per pixel. Y 16-235 (CCIR). No pad between lines; pad at end of chunk if odd.
+
+DATU, DATV: Colour difference. Same size as per mode (411: width/4, 422: width/2, 444: width). Values 16-240, 128=zero; subtract 128 for signed -112..112.
+
+DATA (optional): Alpha, one byte per pixel, same dimensions as Y.
+
+YCbCr to RGB: standard BT.601 conversion.
+@{"Main" LINK "main"}
+@ENDNODE
+
+@NODE "framestore" "Video Toaster Framestore"
+IFF Picture Formats
+
+NewTek Video Toaster framestore: FORM ILBM with 16 bitplanes and a PLTP chunk. Not standard ILBM; 16 planes encode two 8-bit components (comp6, comp7) for quadrature Y/C (luma/chroma). Used for camera freeze frames.
+
+Detection: BMHD nPlanes=16 and PLTP present. PLTP 32 bytes: 16 × (component_id, bit_significance). Standard framestore: planes 0-7 → component 6, planes 8-15 → component 7 (byte 0 of each pair = component ID).
+
+BODY: Standard ILBM interleaved by row, 16 planes. row_bytes = ((width+15)/16)*2. Compression 0 or 1 (ByteRun1). Decompress entire BODY then decode.
+
+Bitplane decode: For each pixel (x,y), extract bit from each plane for that row; planes 0-7 → comp6 (plane 0 MSB), planes 8-15 → comp7 (plane 8 MSB).
+
+Luma: Y_raw = (comp6 + comp7) / 2. Studio range (black ~64, white ~207). Display: Y_disp = clamp(1.8351*Y_raw - 123.25, 0, 255).
+
+Chroma: diff = comp6 - comp7 (signed). Row sign: -1 for y mod 4 in {0,3}, +1 for {1,2}. Per 4-pixel group: cos_comp = (diff[0]-diff[2])/2, sin_comp = (diff[1]-diff[3])/2 (after row sign). Cb = -0.5776*cos_comp + 0.8752*sin_comp; Cr = 0.6313*cos_comp + 0.5039*sin_comp. Upsample Cb/Cr to full width then YCbCr to RGB (BT.601).
+@{"Main" LINK "main"}
+@{"ILBM" LINK "ilbm"}
+@ENDNODE
+
+@NODE "compression" "Compression Algorithms"
+IFF Picture Formats
+
+ByteRun1 (PackBits): Used in ILBM, PBM, ACBM, DEEP RUNLENGTH, Framestore. Per row or per buffer. Control byte n (signed): 0..127 = copy next n+1 bytes literally; -128 (0x80) = NOP; -127..-1 = replicate next byte (-n+1) times. Decode until output length reached. Do not compress across rows. Mac UnPackBits equivalent. ILBM compression 2: same PackBits algorithm but applied per column (one stream of height bytes per column per plane); decode column-wise then reorder to row-major.
+
+TVDC (TVPaint DEEP): 16-word delta table. Source is 4-bit nibbles (MSB first). v=0; for each nibble d: v += table[d]; output v; if table[d]==0, next nibble is run length (repeat v that many times). Applied per line per DPEL element.
+
+FAXX MH/MR/MMR: ITU-T T.4. MH = 1D Modified Huffman run-length codes. MR = 2D Modified READ (reference line). MMR = Modified MR for Group 4. EOL/RTC markers in PAGE chunk.
+@{"Main" LINK "main"}
+@{"ILBM" LINK "ilbm"}
+@{"DEEP" LINK "deep"}
+@ENDNODE
+
+@NODE "metadata" "Metadata Chunks"
+IFF Picture Formats
+
+Common property chunks (often before BODY/DBOD/PAGE):
+
+GRAB: Point2D (WORD x, y) - hotspot/handle.
+DEST: DestMerge - depth, planePick, planeOnOff, planeMask (merge into deeper bitmap).
+SPRT: UWORD - sprite precedence (0=foremost).
+CRNG: CRange - pad, rate, flags (RNG_ACTIVE, RNG_REVERSE), low, high colour registers (colour cycling).
+(c) : Copyright text.
+AUTH: Author text.
+ANNO: Annotation text (may repeat).
+TEXT: Unformatted text (may repeat).
+FVER: Version string (e.g. AmigaOS).
+CAMG: Viewport mode (ILBM) - LONG.
+EXIF, IPTC, XMP0, XMP1, ICCP, ICCN, GEOT, GEOF: Extended metadata (binary or text).
+
+PLTP: 32 bytes, 16 × (component_id, bit_significance). Used in Video Toaster Framestore (ILBM 16-plane). Bytes 0-1 = plane 0, 2-3 = plane 1, ... 30-31 = plane 15.
+
+CMAP storage: R,G,B each 0-255. For 4-bit hardware store scaled (e.g. 0x11,0x77,0xFF for 1,7,15). Left-justified legacy: high nibble significant; scale when displaying on 8-bit.
+@{"Main" LINK "main"}
+@{"ILBM" LINK "ilbm"}
+@ENDNODE
+
+@NODE "refs" "References"
+IFF Picture Formats
+
+EA IFF 85; Commodore IFF docs (ILBM.rtf, EA IFF 85.rtf); example folder: ILBM.txt, DEEP.txt, RGB8.txt, yuvn.txt, faxx.txt; Video Toaster Framestore: FramestoreDT/VideoToaster_Framestore_Format_Specification.md; iff2png IFFPicture library (iffpicturelib).
+@{"Main" LINK "main"}
+@ENDNODE
+
+@NODE "index" "Index"
+IFF Picture Formats
+
+Quick index.
+
+@{"Main" LINK "main"}
+@{"References" LINK "refs"}
+
+Formats:
+@{"ILBM" LINK "ilbm"}
+@{"PBM" LINK "pbm"}
+@{"RGBN/RGB8" LINK "rgbn"}
+@{"DEEP" LINK "deep"}
+@{"ACBM" LINK "acbm"}
+@{"FAXX" LINK "faxx"}
+@{"YUVN" LINK "yuvn"}
+@{"Video Toaster Framestore" LINK "framestore"}
+
+Reference:
+@{"IFF Container" LINK "container"}
+@{"Compression" LINK "compression"}
+@{"Metadata" LINK "metadata"}
+@ENDNODE

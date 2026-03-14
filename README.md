@@ -82,7 +82,7 @@ iff2png source.iff target.png STRIP
 
 ### Supported IFF Formats
 
-- **ILBM** (InterLeaved BitMap) - Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue).
+- **ILBM** (InterLeaved BitMap) - Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue), and ILBM compression type 2 - column-wise ByteRun1
 - **PBM** (Packed BitMap) - Similar to ILBM but with packed pixels (one byte per pixel) instead of bitplanes (N.B. this is not the same as NetPBM)
 - **RGBN** - RGB format with N planes (true-color with separate RGB channels).
 - **RGB8** - RGB 8-bit format (24-bit color, 32-bit with alpha).

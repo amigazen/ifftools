@@ -149,6 +149,8 @@ Facsimile image format using ITU-T T.4 compression (Modified Huffman, Modified R
 YUVN:
 YUV color space format for broadcast television (CCIR-601-2 standard). Note: YUVN support is planned but not yet implemented.
 
+For detailed IFF picture format structure, chunk layouts, and decoding algorithms (ILBM, PBM, DEEP, FAXX, YUVN, Video Toaster Framestore, etc.), see the companion guide "IFF Picture Formats.guide" in the same directory.
+
 Compression Methods:
 ? ByteRun1 (RLE) - Standard IFF compression
 ? Modified Huffman (MH) - FAXX compression

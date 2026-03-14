@@ -1,0 +1,1446 @@
+TABLE OF CONTENTS
+
+iffsound.library/AllocIFFSound
+iffsound.library/FreeIFFSound
+iffsound.library/InitIFFSoundasDOS
+iffsound.library/OpenIFFSound
+iffsound.library/CloseIFFSound
+iffsound.library/ParseIFFSound
+iffsound.library/ReadVHDR
+iffsound.library/ReadCOMM
+iffsound.library/ReadMAUD
+iffsound.library/ReadBODY
+iffsound.library/ReadNAME
+iffsound.library/ReadCopyright
+iffsound.library/ReadAuthor
+iffsound.library/ReadAnnotation
+iffsound.library/ReadAllAnnotations
+iffsound.library/ReadATAK
+iffsound.library/ReadRLSE
+iffsound.library/ReadCHAN
+iffsound.library/ReadPAN
+iffsound.library/ReadSEQN
+iffsound.library/ReadFADE
+iffsound.library/ReadFVER
+iffsound.library/ReadFVERString
+iffsound.library/ReadAllMarkers
+iffsound.library/ReadINST
+iffsound.library/ReadAllComments
+iffsound.library/GetIFFHandle
+iffsound.library/GetSampleRate
+iffsound.library/GetChannels
+iffsound.library/GetBitDepth
+iffsound.library/GetSampleCount
+iffsound.library/GetFormType
+iffsound.library/GetVHDR
+iffsound.library/GetCOMM
+iffsound.library/GetMAUD
+iffsound.library/GetSampleData
+iffsound.library/GetSampleDataSize
+iffsound.library/IsCompressed
+iffsound.library/GetDuration
+iffsound.library/GetDurationSeconds
+iffsound.library/GetBitRate
+iffsound.library/GetByteRate
+iffsound.library/GetLength
+iffsound.library/GetSoundInfo
+iffsound.library/Decode
+iffsound.library/DecodeToPCM
+iffsound.library/DecodeTo8Bit
+iffsound.library/DecodeTo16Bit
+iffsound.library/AnalyzeFormat
+iffsound.library/IFFSoundError
+iffsound.library/IFFSoundErrorString
+iffsound.library/AllocIFFSound                           iffsound.library/AllocIFFSound
+
+   NAME
+	AllocIFFSound -- create a new IFFSound structure. (V1.0)
+
+   SYNOPSIS
+	sound = AllocIFFSound()
+	D0
+
+	struct IFFSound *AllocIFFSound(VOID);
+
+   FUNCTION
+	Allocates and initializes a new IFFSound structure. This function is
+	the only supported way to create an IFFSound structure since there are
+	private fields that need to be initialized.
+
+   RESULT
+	sound - pointer to IFFSound structure or NULL if the allocation failed.
+
+   SEE ALSO
+	FreeIFFSound(), <iffsound.h>
+
+iffsound.library/FreeIFFSound                         iffsound.library/FreeIFFSound
+
+   NAME
+	FreeIFFSound -- deallocate an IFFSound structure. (V1.0)
+
+   SYNOPSIS
+	FreeIFFSound(sound);
+	                A0
+
+	VOID FreeIFFSound(struct IFFSound *);
+
+   FUNCTION
+	Deallocates all resources associated with this IFFSound structure. The
+	structure MUST have already been closed with CloseIFFSound(). Frees all
+	allocated memory including VHDR, COMM, MAUD headers, sample data, and
+	metadata (NAME, markers, instrument, comments, loops, etc.).
+
+   INPUTS
+	sound - pointer to IFFSound structure to free. This may be NULL.
+
+   SEE ALSO
+	AllocIFFSound(), CloseIFFSound(), <iffsound.h>
+
+iffsound.library/InitIFFSoundasDOS               iffsound.library/InitIFFSoundasDOS
+
+   NAME
+	InitIFFSoundasDOS -- initialize an IFFSound as a DOS stream. (V1.0)
+
+   SYNOPSIS
+	InitIFFSoundasDOS(sound);
+	                      A0
+
+	VOID InitIFFSoundasDOS(struct IFFSound *);
+
+   FUNCTION
+	Initializes the IFFSound to operate on DOS streams. Allocates and
+	initializes an internal IFFHandle structure. The iff_Stream field must
+	be set by the caller after calling Open() to get a BPTR file handle.
+
+	This function follows the iffparse.library pattern where InitIFFasDOS()
+	initializes the IFFHandle but does not open the file. The caller is
+	responsible for opening the file and setting iff_Stream.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   SEE ALSO
+	OpenIFFSound(), GetIFFHandle(), <iffsound.h>
+
+iffsound.library/OpenIFFSound                         iffsound.library/OpenIFFSound
+
+   NAME
+	OpenIFFSound -- prepare an IFFSound to read or write a new IFF stream.
+			(V1.0)
+
+   SYNOPSIS
+	error = OpenIFFSound(sound, rwMode);
+	D0                   A0      D0
+
+	LONG OpenIFFSound(struct IFFSound *, LONG);
+
+   FUNCTION
+	Prepares an IFFSound to read or write a new IFF stream. The direction
+	of I/O is given by rwMode (IFFF_READ or IFFF_WRITE). The IFFSound must
+	have been initialized with InitIFFSoundasDOS() and iff_Stream must be
+	set to a valid BPTR file handle before calling this function.
+
+	This function follows the iffparse.library pattern where OpenIFF()
+	prepares the IFF context but does not open the file handle. The caller
+	is responsible for opening the file and setting iff_Stream.
+
+   INPUTS
+	sound  - pointer to IFFSound structure.
+	rwMode - IFFF_READ or IFFF_WRITE
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	CloseIFFSound(), InitIFFSoundasDOS(), GetIFFHandle(), <iffsound.h>
+
+iffsound.library/CloseIFFSound                       iffsound.library/CloseIFFSound
+
+   NAME
+	CloseIFFSound -- close an IFFSound context. (V1.0)
+
+   SYNOPSIS
+	CloseIFFSound(sound);
+	                 A0
+
+	VOID CloseIFFSound(struct IFFSound *);
+
+   FUNCTION
+	Completes an IFF read or write operation by closing the IFF context.
+	The IFFHandle structure is freed. The file handle (iff_Stream) is NOT
+	closed - the caller is responsible for closing it with Close(). This
+	matches iffparse.library behavior where CloseIFF() doesn't close the
+	file handle.
+
+	This function can be used for cleanup if a read or write fails partway
+	through.
+
+   INPUTS
+	sound - pointer to IFFSound structure previously opened with
+		OpenIFFSound(). This may be NULL.
+
+   SEE ALSO
+	OpenIFFSound(), FreeIFFSound(), <iffsound.h>
+
+iffsound.library/ParseIFFSound                       iffsound.library/ParseIFFSound
+
+   NAME
+	ParseIFFSound -- parse an IFF file structure. (V1.0)
+
+   SYNOPSIS
+	error = ParseIFFSound(sound);
+	D0                    A0
+
+	LONG ParseIFFSound(struct IFFSound *);
+
+   FUNCTION
+	Parses the IFF file structure and reads property chunks (VHDR, COMM,
+	MAUD, etc.) into the IFFSound structure. Must be called after
+	OpenIFFSound(). This function uses iffparse.library's ParseIFF() to
+	traverse the file and store property chunks that were declared with
+	PropChunk().
+
+	Supports FORM 8SVX (VHDR, BODY, NAME, ATAK, RLSE, CHAN, PAN, SEQN,
+	FADE), FORM 16SV (same as 8SVX with 16-bit BODY), FORM AIFF and FORM
+	AIFC (COMM, SSND, FVER, MARK, INST, COMT), and FORM MAUD (MAUD header,
+	BODY). Metadata chunks (NAME, Copyright, AUTH, ANNO) are read
+	automatically during parsing where applicable.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	OpenIFFSound(), ReadVHDR(), ReadCOMM(), ReadMAUD(), ReadBODY(),
+	<iffsound.h>
+
+iffsound.library/ReadVHDR                               iffsound.library/ReadVHDR
+
+   NAME
+	ReadVHDR -- read VHDR (Voice Header) chunk. (V1.0)
+
+   SYNOPSIS
+	error = ReadVHDR(sound);
+	D0                A0
+
+	LONG ReadVHDR(struct IFFSound *);
+
+   FUNCTION
+	Reads the VHDR (Voice Header) chunk for 8SVX and 16SV formats and
+	stores it in the IFFSound structure. This chunk contains sample rate,
+	octave count, compression type, volume, and sample counts. Uses
+	iffparse.library's FindProp() to locate the stored property chunk that
+	was declared with PropChunk() during ParseIFFSound().
+
+	VHDR is read automatically during ParseIFFSound() for 8SVX and 16SV.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	ParseIFFSound(), GetVHDR(), <iffsound.h>
+
+iffsound.library/ReadCOMM                               iffsound.library/ReadCOMM
+
+   NAME
+	ReadCOMM -- read COMM (Common) chunk. (V1.0)
+
+   SYNOPSIS
+	error = ReadCOMM(sound);
+	D0                A0
+
+	LONG ReadCOMM(struct IFFSound *);
+
+   FUNCTION
+	Reads the COMM (Common) chunk for AIFF and AIFC formats. Contains
+	sample rate (80-bit IEEE 754 extended), channels, bit depth, and
+	sample frame count. For AIFC, also reads the 4-byte compression format
+	ID (NONE, ULAW, ALAW, FL32, sowt, etc.). Uses iffparse.library's
+	FindProp() to locate the stored property chunk.
+
+	COMM is read automatically during ParseIFFSound() for AIFF and AIFC.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	ParseIFFSound(), GetCOMM(), <iffsound.h>
+
+iffsound.library/ReadMAUD                               iffsound.library/ReadMAUD
+
+   NAME
+	ReadMAUD -- read MAUD header chunk. (V1.0)
+
+   SYNOPSIS
+	error = ReadMAUD(sound);
+	D0                A0
+
+	LONG ReadMAUD(struct IFFSound *);
+
+   FUNCTION
+	Reads the MAUD header chunk for MAUD format. Contains sample rate,
+	channels, bit depth, sample frame count, and compression type. Uses
+	iffparse.library's FindProp() to locate the stored property chunk.
+
+	MAUD header is read automatically during ParseIFFSound() for MAUD.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	ParseIFFSound(), GetMAUD(), <iffsound.h>
+
+iffsound.library/ReadBODY                               iffsound.library/ReadBODY
+
+   NAME
+	ReadBODY -- read BODY or SSND chunk header information. (V1.0)
+
+   SYNOPSIS
+	error = ReadBODY(sound);
+	D0                A0
+
+	LONG ReadBODY(struct IFFSound *);
+
+   FUNCTION
+	Reads the BODY chunk (8SVX, 16SV, MAUD) or SSND chunk (AIFF, AIFC)
+	header information. The BODY/SSND chunk contains the actual audio
+	sample data. This function stores the chunk size and position for
+	later reading during decoding.
+
+	BODY/SSND is read automatically during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	ParseIFFSound(), Decode(), <iffsound.h>
+
+iffsound.library/ReadNAME                               iffsound.library/ReadNAME
+
+   NAME
+	ReadNAME -- read NAME chunk. (V1.0)
+
+   SYNOPSIS
+	name = ReadNAME(sound);
+	D0                A0
+
+	STRPTR ReadNAME(struct IFFSound *);
+
+   FUNCTION
+	Reads the NAME chunk containing a title or identifier string. Returns
+	a pointer to a null-terminated string in IFFSound's memory, or NULL if
+	not found. The pointer is valid until FreeIFFSound() is called.
+	Library owns the memory - caller must NOT free.
+
+	Metadata is read automatically during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	name - pointer to null-terminated string, or NULL if not found.
+
+   SEE ALSO
+	ParseIFFSound(), ReadCopyright(), ReadAuthor(), <iffsound.h>
+
+iffsound.library/ReadCopyright                     iffsound.library/ReadCopyright
+
+   NAME
+	ReadCopyright -- read Copyright chunk. (V1.0)
+
+   SYNOPSIS
+	copyright = ReadCopyright(sound);
+	D0                      A0
+
+	STRPTR ReadCopyright(struct IFFSound *);
+
+   FUNCTION
+	Reads the Copyright chunk containing copyright text. Returns a pointer
+	to a null-terminated string in IFFSound's memory, or NULL if not found.
+	The pointer is valid until FreeIFFSound() is called. Library owns the
+	memory - caller must NOT free.
+
+	Metadata is read automatically during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	copyright - pointer to null-terminated copyright string, or NULL if
+		    not found.
+
+   SEE ALSO
+	ReadAuthor(), ReadNAME(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadAuthor                             iffsound.library/ReadAuthor
+
+   NAME
+	ReadAuthor -- read AUTH chunk (author information). (V1.0)
+
+   SYNOPSIS
+	author = ReadAuthor(sound);
+	D0                A0
+
+	STRPTR ReadAuthor(struct IFFSound *);
+
+   FUNCTION
+	Reads the AUTH chunk containing author information. Returns a pointer
+	to a null-terminated string in IFFSound's memory, or NULL if not found.
+	The pointer is valid until FreeIFFSound() is called. Library owns the
+	memory - caller must NOT free.
+
+	Metadata is read automatically during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	author - pointer to null-terminated author string, or NULL if not
+		 found.
+
+   SEE ALSO
+	ReadCopyright(), ReadNAME(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadAnnotation                     iffsound.library/ReadAnnotation
+
+   NAME
+	ReadAnnotation -- read ANNO chunk (first instance). (V1.0)
+
+   SYNOPSIS
+	annotation = ReadAnnotation(sound);
+	D0                      A0
+
+	STRPTR ReadAnnotation(struct IFFSound *);
+
+   FUNCTION
+	Reads the first ANNO chunk containing annotation text. Returns a
+	pointer to a null-terminated string in IFFSound's memory, or NULL if
+	not found. Multiple ANNO chunks can exist; this returns the first one.
+	The pointer is valid until FreeIFFSound() is called. Library owns the
+	memory - caller must NOT free.
+
+	To get all ANNO chunks, use ReadAllAnnotations().
+
+	Metadata is read automatically during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	annotation - pointer to null-terminated annotation string, or NULL if
+		     not found.
+
+   SEE ALSO
+	ReadAllAnnotations(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadAllAnnotations             iffsound.library/ReadAllAnnotations
+
+   NAME
+	ReadAllAnnotations -- read all ANNO chunks. (V1.0)
+
+   SYNOPSIS
+	textList = ReadAllAnnotations(sound);
+	D0                        A0
+
+	struct TextList *ReadAllAnnotations(struct IFFSound *);
+
+   FUNCTION
+	Reads all ANNO chunks containing annotation text. Returns a pointer to
+	a TextList structure containing count and array pointer into
+	IFFSound's memory, or NULL if not found. Pointers are valid until
+	FreeIFFSound() is called. Library owns the memory - caller must NOT
+	free.
+
+	Metadata is read automatically during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	textList - pointer to TextList structure containing count and texts
+		   array, or NULL if not found.
+
+   SEE ALSO
+	ReadAnnotation(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadATAK                               iffsound.library/ReadATAK
+
+   NAME
+	ReadATAK -- read ATAK chunk (attack envelope). (V1.0)
+
+   SYNOPSIS
+	atak = ReadATAK(sound);
+	D0                A0
+
+	struct EGPointList *ReadATAK(struct IFFSound *);
+
+   FUNCTION
+	Reads the ATAK chunk (attack envelope) for 8SVX format. Returns a
+	pointer to an EGPointList structure containing envelope segment
+	durations and destination volume factors, or NULL if not found. The
+	pointer is valid until FreeIFFSound() is called. Library owns the
+	memory - caller must NOT free.
+
+	Only applicable to 8SVX and 16SV. Metadata is read during
+	ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	atak - pointer to EGPointList structure, or NULL if not found.
+
+   SEE ALSO
+	ReadRLSE(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadRLSE                               iffsound.library/ReadRLSE
+
+   NAME
+	ReadRLSE -- read RLSE chunk (release envelope). (V1.0)
+
+   SYNOPSIS
+	rlse = ReadRLSE(sound);
+	D0                A0
+
+	struct EGPointList *ReadRLSE(struct IFFSound *);
+
+   FUNCTION
+	Reads the RLSE chunk (release envelope) for 8SVX format. Returns a
+	pointer to an EGPointList structure containing envelope segment
+	durations and destination volume factors, or NULL if not found. The
+	pointer is valid until FreeIFFSound() is called. Library owns the
+	memory - caller must NOT free.
+
+	Only applicable to 8SVX and 16SV. Metadata is read during
+	ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	rlse - pointer to EGPointList structure, or NULL if not found.
+
+   SEE ALSO
+	ReadATAK(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadCHAN                               iffsound.library/ReadCHAN
+
+   NAME
+	ReadCHAN -- read CHAN chunk (channel assignment). (V1.0)
+
+   SYNOPSIS
+	chan = ReadCHAN(sound);
+	D0                A0
+
+	ULONG ReadCHAN(struct IFFSound *);
+
+   FUNCTION
+	Reads the CHAN chunk for 8SVX/16SV format. Returns the channel
+	assignment: CHAN_RIGHT (4), CHAN_LEFT (2), or CHAN_STEREO (6). Returns
+	0 if the chunk is not found.
+
+	Only applicable to 8SVX and 16SV. Metadata is read during
+	ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	chan - channel assignment (CHAN_RIGHT, CHAN_LEFT, or CHAN_STEREO), or
+	       0 if not found.
+
+   SEE ALSO
+	ReadPAN(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadPAN                                iffsound.library/ReadPAN
+
+   NAME
+	ReadPAN -- read PAN chunk (panning position). (V1.0)
+
+   SYNOPSIS
+	pan = ReadPAN(sound);
+	D0               A0
+
+	Fixed ReadPAN(struct IFFSound *);
+
+   FUNCTION
+	Reads the PAN chunk for 8SVX/16SV format. Returns the panning position
+	as a Fixed value from 0 to Unity (0x10000). Returns 0 if the chunk is
+	not found.
+
+	Only applicable to 8SVX and 16SV. Metadata is read during
+	ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	pan - panning position (Fixed 0 to Unity), or 0 if not found.
+
+   SEE ALSO
+	ReadCHAN(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadSEQN                               iffsound.library/ReadSEQN
+
+   NAME
+	ReadSEQN -- read SEQN chunk (sequence/loop definitions). (V1.0)
+
+   SYNOPSIS
+	seqn = ReadSEQN(sound);
+	D0                A0
+
+	struct LoopList *ReadSEQN(struct IFFSound *);
+
+   FUNCTION
+	Reads the SEQN chunk for 8SVX/16SV format containing loop start and
+	end offsets. Returns a pointer to a LoopList structure, or NULL if not
+	found. The pointer is valid until FreeIFFSound() is called. Library
+	owns the memory - caller must NOT free.
+
+	Only applicable to 8SVX and 16SV. Metadata is read during
+	ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	seqn - pointer to LoopList structure (count and LoopPair array), or
+	       NULL if not found.
+
+   SEE ALSO
+	ReadFADE(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadFADE                               iffsound.library/ReadFADE
+
+   NAME
+	ReadFADE -- read FADE chunk (fade loop number). (V1.0)
+
+   SYNOPSIS
+	fade = ReadFADE(sound);
+	D0                A0
+
+	ULONG ReadFADE(struct IFFSound *);
+
+   FUNCTION
+	Reads the FADE chunk for 8SVX/16SV format. Returns the fade loop number
+	(index into the SEQN loop list). Returns 0 if the chunk is not found.
+
+	Only applicable to 8SVX and 16SV. Metadata is read during
+	ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	fade - fade loop number, or 0 if not found.
+
+   SEE ALSO
+	ReadSEQN(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadFVER                               iffsound.library/ReadFVER
+
+   NAME
+	ReadFVER -- read FVER chunk (AIFC format version timestamp). (V1.0)
+
+   SYNOPSIS
+	timestamp = ReadFVER(sound);
+	D0                     A0
+
+	ULONG ReadFVER(struct IFFSound *);
+
+   FUNCTION
+	Reads the FVER chunk for AIFC format. Returns the 4-byte format
+	version timestamp. Returns 0 if not found or not AIFC. For other
+	formats (8SVX, 16SV, AIFF, MAUD), use ReadFVERString() to get the
+	AmigaOS version string instead.
+
+	Metadata is read during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	timestamp - format version timestamp (AIFC), or 0 if not found.
+
+   SEE ALSO
+	ReadFVERString(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadFVERString                     iffsound.library/ReadFVERString
+
+   NAME
+	ReadFVERString -- read FVER chunk (version string for non-AIFC). (V1.0)
+
+   SYNOPSIS
+	verStr = ReadFVERString(sound);
+	D0                     A0
+
+	STRPTR ReadFVERString(struct IFFSound *);
+
+   FUNCTION
+	Reads the FVER chunk when it contains a standard AmigaOS version
+	string ($VER: name ver.rev). Used for 8SVX, 16SV, AIFF, and MAUD. For
+	AIFC, FVER contains a 4-byte timestamp; use ReadFVER() instead. Returns
+	a pointer to a null-terminated string in IFFSound's memory, or NULL if
+	not found. The pointer is valid until FreeIFFSound() is called.
+
+	Metadata is read during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	verStr - pointer to null-terminated version string, or NULL if not
+		 found.
+
+   SEE ALSO
+	ReadFVER(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadAllMarkers                     iffsound.library/ReadAllMarkers
+
+   NAME
+	ReadAllMarkers -- read all MARK chunks (AIFF/AIFC markers). (V1.0)
+
+   SYNOPSIS
+	markerList = ReadAllMarkers(sound);
+	D0                        A0
+
+	struct AIFFMarkerList *ReadAllMarkers(struct IFFSound *);
+
+   FUNCTION
+	Reads all MARK chunks for AIFF and AIFC formats. Returns a pointer to
+	an AIFFMarkerList structure containing count and array of AIFFMarker
+	(id, position, name). Pointers are valid until FreeIFFSound() is
+	called. Library owns the memory - caller must NOT free. Returns NULL
+	if not found or not AIFF/AIFC.
+
+	Metadata is read during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	markerList - pointer to AIFFMarkerList structure, or NULL if not
+		     found.
+
+   SEE ALSO
+	ReadINST(), ReadAllComments(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadINST                               iffsound.library/ReadINST
+
+   NAME
+	ReadINST -- read INST chunk (instrument data). (V1.0)
+
+   SYNOPSIS
+	inst = ReadINST(sound);
+	D0                A0
+
+	struct AIFFInstrument *ReadINST(struct IFFSound *);
+
+   FUNCTION
+	Reads the INST chunk for AIFF and AIFC formats. Returns a pointer to
+	an AIFFInstrument structure (base note, detune, note/velocity range,
+	gain, sustain and release loops). The pointer is valid until
+	FreeIFFSound() is called. Library owns the memory - caller must NOT
+	free. Returns NULL if not found or not AIFF/AIFC.
+
+	Metadata is read during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	inst - pointer to AIFFInstrument structure, or NULL if not found.
+
+   SEE ALSO
+	ReadAllMarkers(), ReadAllComments(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/ReadAllComments                   iffsound.library/ReadAllComments
+
+   NAME
+	ReadAllComments -- read all COMT chunks (timestamped comments). (V1.0)
+
+   SYNOPSIS
+	commentList = ReadAllComments(sound);
+	D0                          A0
+
+	struct AIFFCommentList *ReadAllComments(struct IFFSound *);
+
+   FUNCTION
+	Reads all COMT chunks for AIFF and AIFC formats. Returns a pointer to
+	an AIFFCommentList structure containing count and array of AIFFComment
+	(timeStamp, marker, text). Pointers are valid until FreeIFFSound() is
+	called. Library owns the memory - caller must NOT free. Returns NULL
+	if not found or not AIFF/AIFC.
+
+	Metadata is read during ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	commentList - pointer to AIFFCommentList structure, or NULL if not
+		      found.
+
+   SEE ALSO
+	ReadAllMarkers(), ReadINST(), ParseIFFSound(), <iffsound.h>
+
+iffsound.library/GetIFFHandle                       iffsound.library/GetIFFHandle
+
+   NAME
+	GetIFFHandle -- get pointer to internal IFFHandle structure. (V1.0)
+
+   SYNOPSIS
+	iff = GetIFFHandle(sound);
+	D0                 A0
+
+	struct IFFHandle *GetIFFHandle(struct IFFSound *);
+
+   FUNCTION
+	Returns a pointer to the internal IFFHandle structure. This allows the
+	caller to set iff_Stream after calling InitIFFSoundasDOS() and before
+	calling OpenIFFSound(). Returns NULL if the IFFSound is not
+	initialized.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	iff - pointer to IFFHandle structure or NULL if not initialized.
+
+   SEE ALSO
+	InitIFFSoundasDOS(), OpenIFFSound(), <iffsound.h>
+
+iffsound.library/GetSampleRate                       iffsound.library/GetSampleRate
+
+   NAME
+	GetSampleRate -- get sample rate in Hz. (V1.0)
+
+   SYNOPSIS
+	rate = GetSampleRate(sound);
+	D0                  A0
+
+	ULONG GetSampleRate(struct IFFSound *);
+
+   FUNCTION
+	Returns the sample rate in Hz. For 8SVX/16SV uses VHDR samplesPerSec;
+	for AIFF/AIFC uses the 80-bit extended float from COMM; for MAUD uses
+	MAUD header sampleRate. Returns 0 if not loaded.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	rate - sample rate in Hz, or 0 if not loaded.
+
+   SEE ALSO
+	GetChannels(), GetBitDepth(), GetSoundInfo(), <iffsound.h>
+
+iffsound.library/GetChannels                           iffsound.library/GetChannels
+
+   NAME
+	GetChannels -- get number of audio channels. (V1.0)
+
+   SYNOPSIS
+	channels = GetChannels(sound);
+	D0                    A0
+
+	ULONG GetChannels(struct IFFSound *);
+
+   FUNCTION
+	Returns the number of audio channels (1 = mono, 2 = stereo). For
+	8SVX/16SV without CHAN chunk, returns 1. Returns 0 if not loaded.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	channels - number of channels (1 or 2), or 0 if not loaded.
+
+   SEE ALSO
+	GetSampleRate(), GetBitDepth(), GetSoundInfo(), <iffsound.h>
+
+iffsound.library/GetBitDepth                           iffsound.library/GetBitDepth
+
+   NAME
+	GetBitDepth -- get bit depth. (V1.0)
+
+   SYNOPSIS
+	depth = GetBitDepth(sound);
+	D0                  A0
+
+	ULONG GetBitDepth(struct IFFSound *);
+
+   FUNCTION
+	Returns the bit depth (8, 16, 24, or 32). For 8SVX returns 8; for
+	16SV returns 16; for AIFF/AIFC uses COMM sampleSize; for MAUD uses
+	MAUD header sampleSize. Returns 0 if not loaded.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	depth - bit depth (8, 16, 24, or 32), or 0 if not loaded.
+
+   SEE ALSO
+	GetSampleRate(), GetChannels(), GetSoundInfo(), <iffsound.h>
+
+iffsound.library/GetSampleCount                     iffsound.library/GetSampleCount
+
+   NAME
+	GetSampleCount -- get total number of sample frames. (V1.0)
+
+   SYNOPSIS
+	count = GetSampleCount(sound);
+	D0                    A0
+
+	ULONG GetSampleCount(struct IFFSound *);
+
+   FUNCTION
+	Returns the total number of sample frames (samples per channel). For
+	8SVX/16SV derived from VHDR oneShotHiSamples and repeatHiSamples; for
+	AIFF/AIFC from COMM numSampleFrames; for MAUD from MAUD header. Returns
+	0 if not loaded.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	count - number of sample frames, or 0 if not loaded.
+
+   SEE ALSO
+	GetLength(), GetSoundInfo(), <iffsound.h>
+
+iffsound.library/GetFormType                           iffsound.library/GetFormType
+
+   NAME
+	GetFormType -- get IFF FORM type identifier. (V1.0)
+
+   SYNOPSIS
+	type = GetFormType(sound);
+	D0                A0
+
+	ULONG GetFormType(struct IFFSound *);
+
+   FUNCTION
+	Returns the IFF FORM type identifier (e.g., ID_8SVX, ID_16SV, ID_AIFF,
+	ID_AIFC, ID_MAUD). This identifies the audio format variant.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	type - IFF FORM type identifier, or 0 if not loaded.
+
+   SEE ALSO
+	<iffsound.h>
+
+iffsound.library/GetVHDR                               iffsound.library/GetVHDR
+
+   NAME
+	GetVHDR -- get pointer to Voice8Header structure. (V1.0)
+
+   SYNOPSIS
+	vhdr = GetVHDR(sound);
+	D0                 A0
+
+	struct Voice8Header *GetVHDR(struct IFFSound *);
+
+   FUNCTION
+	Returns a pointer to the internal Voice8Header structure (VHDR chunk).
+	Only valid for 8SVX and 16SV formats. This pointer remains valid until
+	the IFFSound is freed. Returns NULL if not loaded or not 8SVX/16SV.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	vhdr - pointer to Voice8Header structure, or NULL if not 8SVX/16SV or
+	       not loaded.
+
+   SEE ALSO
+	ReadVHDR(), GetFormType(), <iffsound.h>
+
+iffsound.library/GetCOMM                               iffsound.library/GetCOMM
+
+   NAME
+	GetCOMM -- get pointer to AIFFCommon structure. (V1.0)
+
+   SYNOPSIS
+	comm = GetCOMM(sound);
+	D0                 A0
+
+	struct AIFFCommon *GetCOMM(struct IFFSound *);
+
+   FUNCTION
+	Returns a pointer to the internal AIFFCommon structure (COMM chunk).
+	Only valid for AIFF and AIFC formats. This pointer remains valid until
+	the IFFSound is freed. Returns NULL if not loaded or not AIFF/AIFC.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	comm - pointer to AIFFCommon structure, or NULL if not AIFF/AIFC or
+	       not loaded.
+
+   SEE ALSO
+	ReadCOMM(), GetFormType(), <iffsound.h>
+
+iffsound.library/GetMAUD                               iffsound.library/GetMAUD
+
+   NAME
+	GetMAUD -- get pointer to MAUDHeader structure. (V1.0)
+
+   SYNOPSIS
+	maud = GetMAUD(sound);
+	D0                 A0
+
+	struct MAUDHeader *GetMAUD(struct IFFSound *);
+
+   FUNCTION
+	Returns a pointer to the internal MAUDHeader structure. Only valid for
+	MAUD format. This pointer remains valid until the IFFSound is freed.
+	Returns NULL if not loaded or not MAUD.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	maud - pointer to MAUDHeader structure, or NULL if not MAUD or not
+	       loaded.
+
+   SEE ALSO
+	ReadMAUD(), GetFormType(), <iffsound.h>
+
+iffsound.library/GetSampleData                       iffsound.library/GetSampleData
+
+   NAME
+	GetSampleData -- get pointer to decoded sample data buffer. (V1.0)
+
+   SYNOPSIS
+	data = GetSampleData(sound);
+	D0                 A0
+
+	UBYTE *GetSampleData(struct IFFSound *);
+
+   FUNCTION
+	Returns a pointer to the decoded sample data buffer. The data format
+	depends on the format type (8-bit or 16-bit internal). Returns NULL if
+	audio has not been decoded.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	data - pointer to sample data buffer, or NULL if not decoded.
+
+   SEE ALSO
+	Decode(), DecodeTo8Bit(), DecodeTo16Bit(), GetSampleDataSize(),
+	GetSoundInfo(), <iffsound.h>
+
+iffsound.library/GetSampleDataSize                 iffsound.library/GetSampleDataSize
+
+   NAME
+	GetSampleDataSize -- get size of decoded sample data in bytes. (V1.0)
+
+   SYNOPSIS
+	size = GetSampleDataSize(sound);
+	D0                    A0
+
+	ULONG GetSampleDataSize(struct IFFSound *);
+
+   FUNCTION
+	Returns the size in bytes of the decoded sample data. This is useful
+	for calculating buffer sizes.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	size - size in bytes of sample data, or 0 if not decoded.
+
+   SEE ALSO
+	GetSampleData(), Decode(), GetSoundInfo(), <iffsound.h>
+
+iffsound.library/IsCompressed                         iffsound.library/IsCompressed
+
+   NAME
+	IsCompressed -- check if audio data is compressed. (V1.0)
+
+   SYNOPSIS
+	compressed = IsCompressed(sound);
+	D0                      A0
+
+	BOOL IsCompressed(struct IFFSound *);
+
+   FUNCTION
+	Returns TRUE if the audio data is compressed (Fibonacci-delta for
+	8SVX, ADPCM2/ADPCM3 for MAUD, ULAW/ALAW/FL32 for AIFC, etc.). This is
+	determined during format analysis or from the format header.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	compressed - TRUE if audio is compressed, FALSE otherwise.
+
+   SEE ALSO
+	AnalyzeFormat(), Decode(), <iffsound.h>
+
+iffsound.library/GetDuration                           iffsound.library/GetDuration
+
+   NAME
+	GetDuration -- get duration in milliseconds. (V1.0)
+
+   SYNOPSIS
+	duration = GetDuration(sound);
+	D0                    A0
+
+	ULONG GetDuration(struct IFFSound *);
+
+   FUNCTION
+	Returns the duration of the audio in milliseconds, calculated from
+	sample count and sample rate. Returns 0 if sound is not loaded or
+	sample rate is 0.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	duration - duration in milliseconds, or 0 if not loaded or invalid.
+
+   SEE ALSO
+	GetDurationSeconds(), GetSampleCount(), GetSampleRate(), GetSoundInfo(),
+	<iffsound.h>
+
+iffsound.library/GetDurationSeconds               iffsound.library/GetDurationSeconds
+
+   NAME
+	GetDurationSeconds -- get duration in seconds (floating-point). (V1.0)
+
+   SYNOPSIS
+	secs = GetDurationSeconds(sound);
+	D0                     A0
+
+	double GetDurationSeconds(struct IFFSound *);
+
+   FUNCTION
+	Returns the duration of the audio in seconds as a floating-point value.
+	Returns 0.0 if sound is not loaded or sample rate is 0.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	secs - duration in seconds, or 0.0 if not loaded or invalid.
+
+   SEE ALSO
+	GetDuration(), GetSampleCount(), GetSampleRate(), <iffsound.h>
+
+iffsound.library/GetBitRate                           iffsound.library/GetBitRate
+
+   NAME
+	GetBitRate -- get bit rate in bits per second. (V1.0)
+
+   SYNOPSIS
+	bps = GetBitRate(sound);
+	D0                 A0
+
+	ULONG GetBitRate(struct IFFSound *);
+
+   FUNCTION
+	Returns the bit rate in bits per second (bps), calculated from sample
+	rate, bit depth, and channels. Returns 0 if sound is not loaded.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	bps - bit rate in bits per second, or 0 if not loaded.
+
+   SEE ALSO
+	GetByteRate(), GetSoundInfo(), <iffsound.h>
+
+iffsound.library/GetByteRate                           iffsound.library/GetByteRate
+
+   NAME
+	GetByteRate -- get byte rate in bytes per second. (V1.0)
+
+   SYNOPSIS
+	bps = GetByteRate(sound);
+	D0                 A0
+
+	ULONG GetByteRate(struct IFFSound *);
+
+   FUNCTION
+	Returns the byte rate in bytes per second, calculated from sample
+	rate, bit depth, and channels. Returns 0 if sound is not loaded.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	bps - byte rate in bytes per second, or 0 if not loaded.
+
+   SEE ALSO
+	GetBitRate(), GetSoundInfo(), <iffsound.h>
+
+iffsound.library/GetLength                             iffsound.library/GetLength
+
+   NAME
+	GetLength -- get length in sample frames. (V1.0)
+
+   SYNOPSIS
+	length = GetLength(sound);
+	D0                  A0
+
+	ULONG GetLength(struct IFFSound *);
+
+   FUNCTION
+	Returns the length of the audio in sample frames. This is the same as
+	GetSampleCount() but with a more descriptive name. Returns 0 if sound
+	is not loaded.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	length - number of sample frames, or 0 if not loaded.
+
+   SEE ALSO
+	GetSampleCount(), GetSoundInfo(), <iffsound.h>
+
+iffsound.library/GetSoundInfo                       iffsound.library/GetSoundInfo
+
+   NAME
+	GetSoundInfo -- get aggregate of core audio properties. (V1.0)
+
+   SYNOPSIS
+	info = GetSoundInfo(sound);
+	D0                  A0
+
+	struct IFFSoundInfo *GetSoundInfo(struct IFFSound *);
+
+   FUNCTION
+	Returns a pointer to an IFFSoundInfo structure containing all core
+	audio properties in one place: sampleRate, channels, bitDepth,
+	sampleCount, formType, compressedSize, decodedSize, duration, bitRate,
+	byteRate, isCompressed, isLoaded, isDecoded. Useful to avoid multiple
+	getter calls. The structure is allocated statically and remains valid
+	until the next GetSoundInfo() call or until the IFFSound is freed.
+	Returns NULL if the sound is invalid or not loaded.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	info - pointer to IFFSoundInfo structure, or NULL if invalid/not
+	       loaded.
+
+   SEE ALSO
+	GetSampleRate(), GetChannels(), GetFormType(), GetDuration(),
+	<iffsound.h>
+
+iffsound.library/Decode                                 iffsound.library/Decode
+
+   NAME
+	Decode -- decode IFF audio data to internal format. (V1.0)
+
+   SYNOPSIS
+	error = Decode(sound);
+	D0              A0
+
+	LONG Decode(struct IFFSound *);
+
+   FUNCTION
+	Decodes the IFF audio data into an internal format suitable for
+	further processing. Handles all IFF audio formats (8SVX, 16SV, AIFF,
+	AIFC, MAUD) and compression methods (Fibonacci-delta, ADPCM2, ADPCM3,
+	ULAW, ALAW, FL32, etc.). Must be called after ParseIFFSound().
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	ParseIFFSound(), DecodeTo8Bit(), DecodeTo16Bit(), <iffsound.h>
+
+iffsound.library/DecodeToPCM                         iffsound.library/DecodeToPCM
+
+   NAME
+	DecodeToPCM -- decode IFF audio and convert to PCM format. (V1.0)
+
+   SYNOPSIS
+	error = DecodeToPCM(sound, pcmData, size);
+	D0                      A0      A1      A2
+
+	LONG DecodeToPCM(struct IFFSound *, UBYTE **, ULONG *);
+
+   FUNCTION
+	Decodes the IFF audio and converts it to PCM format. The returned
+	buffer format matches the source bit depth. The caller must not free
+	the buffer if it points to internal sample data (freed by
+	FreeIFFSound()).
+
+   INPUTS
+	sound   - pointer to IFFSound structure.
+	pcmData - pointer to variable to receive PCM data pointer.
+	size    - pointer to variable to receive data size in bytes.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	Decode(), DecodeTo8Bit(), DecodeTo16Bit(), FreeIFFSound(), <iffsound.h>
+
+iffsound.library/DecodeTo8Bit                       iffsound.library/DecodeTo8Bit
+
+   NAME
+	DecodeTo8Bit -- decode IFF audio and convert to 8-bit PCM. (V1.0)
+
+   SYNOPSIS
+	error = DecodeTo8Bit(sound, data, size);
+	D0                      A0      A1      A2
+
+	LONG DecodeTo8Bit(struct IFFSound *, UBYTE **, ULONG *);
+
+   FUNCTION
+	Decodes the IFF audio and converts it to 8-bit PCM format ready for
+	Amiga audio.device playback. For 16-bit sources, samples are scaled
+	down to 8-bit. The returned buffer contains signed 8-bit samples
+	(range -128 to 127). The caller must not free the buffer if it points
+	to internal sample data (freed by FreeIFFSound()).
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+	data  - pointer to variable to receive 8-bit data pointer.
+	size  - pointer to variable to receive data size in bytes.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	Decode(), DecodeTo16Bit(), FreeIFFSound(), <iffsound.h>
+
+iffsound.library/DecodeTo16Bit                     iffsound.library/DecodeTo16Bit
+
+   NAME
+	DecodeTo16Bit -- decode IFF audio and convert to 16-bit PCM. (V1.0)
+
+   SYNOPSIS
+	error = DecodeTo16Bit(sound, data, size);
+	D0                       A0      A1      A2
+
+	LONG DecodeTo16Bit(struct IFFSound *, UWORD **, ULONG *);
+
+   FUNCTION
+	Decodes the IFF audio and converts it to 16-bit PCM format ready for
+	playback. For 8-bit sources, samples are scaled up to 16-bit. The
+	returned buffer contains signed 16-bit samples in big-endian format
+	(range -32768 to 32767). The caller must not free the buffer if it
+	points to internal sample data (freed by FreeIFFSound()).
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+	data  - pointer to variable to receive 16-bit data pointer (UWORD *).
+	size  - pointer to variable to receive data size in bytes.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	Decode(), DecodeTo8Bit(), FreeIFFSound(), <iffsound.h>
+
+iffsound.library/AnalyzeFormat                       iffsound.library/AnalyzeFormat
+
+   NAME
+	AnalyzeFormat -- analyze IFF audio format and properties. (V1.0)
+
+   SYNOPSIS
+	error = AnalyzeFormat(sound);
+	D0                    A0
+
+	LONG AnalyzeFormat(struct IFFSound *);
+
+   FUNCTION
+	Analyzes the loaded IFF audio to determine its properties such as
+	format type, compression, sample rate, channels, and bit depth. This
+	information is used to optimize decoding. Must be called after
+	ParseIFFSound() and before decoding.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	error - 0 if successful or an IFFSOUND_#? error code if unsuccessful.
+
+   SEE ALSO
+	ParseIFFSound(), Decode(), <iffsound.h>
+
+iffsound.library/IFFSoundError                       iffsound.library/IFFSoundError
+
+   NAME
+	IFFSoundError -- get last error code. (V1.0)
+
+   SYNOPSIS
+	error = IFFSoundError(sound);
+	D0                  A0
+
+	LONG IFFSoundError(struct IFFSound *);
+
+   FUNCTION
+	Returns the last error code that occurred during an IFFSound
+	operation. Error codes are negative values (IFFSOUND_* constants) or
+	0 for success.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	error - error code (IFFSOUND_* constant) or 0 for success.
+
+   SEE ALSO
+	IFFSoundErrorString(), <iffsound.h>
+
+iffsound.library/IFFSoundErrorString                 iffsound.library/IFFSoundErrorString
+
+   NAME
+	IFFSoundErrorString -- get last error message. (V1.0)
+
+   SYNOPSIS
+	message = IFFSoundErrorString(sound);
+	D0                        A0
+
+	const char *IFFSoundErrorString(struct IFFSound *);
+
+   FUNCTION
+	Returns a pointer to a null-terminated string describing the last
+	error. The string is stored in the IFFSound structure and remains
+	valid until the next operation or until the IFFSound is freed.
+
+   INPUTS
+	sound - pointer to IFFSound structure.
+
+   RESULT
+	message - pointer to error message string, or a default message if
+		  sound is NULL.
+
+   SEE ALSO
+	IFFSoundError(), <iffsound.h>
+

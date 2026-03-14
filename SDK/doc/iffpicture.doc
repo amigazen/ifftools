@@ -18,8 +18,12 @@ iffpicture.library/GetDepth
 iffpicture.library/GetFormType
 iffpicture.library/GetVPModes
 iffpicture.library/GetBMHD
+iffpicture.library/GetFXHD
+iffpicture.library/GetGPHD
+iffpicture.library/GetYCHD
 iffpicture.library/GetIFFColorMap
 iffpicture.library/GetFAXXCompression
+iffpicture.library/GetImageInfo
 iffpicture.library/ReadGRAB
 iffpicture.library/ReadDEST
 iffpicture.library/ReadSPRT
@@ -36,6 +40,7 @@ iffpicture.library/GetPixelDataSize
 iffpicture.library/HasAlpha
 iffpicture.library/IsHAM
 iffpicture.library/IsEHB
+iffpicture.library/IsFramestore
 iffpicture.library/IsCompressed
 iffpicture.library/Decode
 iffpicture.library/DecodeToRGB
@@ -45,8 +50,8 @@ iffpicture.library/FreeRastPort
 iffpicture.library/AnalyzeFormat
 iffpicture.library/GetOptimalPNGConfig
 iffpicture.library/BestPictureModeID
-iffpicture.library/GetLastError
-iffpicture.library/GetErrorString
+iffpicture.library/IFFPictureError
+iffpicture.library/IFFPictureErrorString
 iffpicture.library/AllocIFFPicture                           iffpicture.library/AllocIFFPicture
 
    NAME
@@ -84,7 +89,9 @@ iffpicture.library/FreeIFFPicture                         iffpicture.library/Fre
    FUNCTION
 	Deallocates all resources associated with this IFFPicture structure.
 	The structure MUST have already been closed with CloseIFFPicture().
-	Frees all allocated memory including BMHD, CMAP, and pixel data.
+	Frees all allocated memory including BMHD, CMAP, pixel data, DEEP
+	chunks (DGBL, DPEL, DLOC, DCHG, TVDC), Framestore PLTP, FAXX/GPHD
+	and YUVN (YCHD) headers, and metadata.
 
    INPUTS
 	picture - pointer to IFFPicture structure to free. This may be NULL.
@@ -196,6 +203,13 @@ iffpicture.library/ParseIFFPicture                   iffpicture.library/ParseIFF
 	OpenIFFPicture(). This function uses iffparse.library's ParseIFF() to
 	traverse the file and store property chunks that were declared with
 	PropChunk().
+
+	Supports FORM ILBM (including 24-bit and Video Toaster Framestore
+	16-plane + PLTP), PBM, RGBN, RGB8, FORM DEEP (DGBL, DPEL, DLOC, DBOD,
+	DCHG, TVDC), ACBM, FORM FAXX (FXHD, PAGE, GPHD), and FORM YUVN (YCHD,
+	DATY, DATU, DATV). For Framestore detection, PLTP is read when present
+	in ILBM; isFramestore is set when nPlanes=16 and PLTP maps to
+	components 6 and 7.
 
    INPUTS
 	picture - pointer to IFFPicture structure.
@@ -380,17 +394,18 @@ iffpicture.library/GetWidth                             iffpicture.library/GetWi
 	UWORD GetWidth(struct IFFPicture *);
 
    FUNCTION
-	Returns the image width in pixels from the BMHD chunk. Return 0 if BMHD
-	is not loaded.
+	Returns the image width in pixels. For ILBM/PBM/RGBN/RGB8/ACBM/FAXX
+	uses BMHD or FXHD; for DEEP uses DGBL DisplayWidth; for YUVN uses
+	YCHD. Return 0 if no header is loaded.
 
    INPUTS
 	picture - pointer to IFFPicture structure.
 
    RESULT
-	width - image width in pixels, or 0 if BMHD not loaded.
+	width - image width in pixels, or 0 if not loaded.
 
    SEE ALSO
-	GetHeight(), GetDepth(), GetBMHD(), <iffpicture.h>
+	GetHeight(), GetDepth(), GetBMHD(), GetFXHD(), GetYCHD(), <iffpicture.h>
 
 iffpicture.library/GetHeight                           iffpicture.library/GetHeight
 
@@ -404,17 +419,18 @@ iffpicture.library/GetHeight                           iffpicture.library/GetHei
 	UWORD GetHeight(struct IFFPicture *);
 
    FUNCTION
-	Returns the image height in pixels from the BMHD chunk. Return 0 if
-	BMHD is not loaded.
+	Returns the image height in pixels. For ILBM/PBM/RGBN/RGB8/ACBM/FAXX
+	uses BMHD or FXHD; for DEEP uses DGBL DisplayHeight; for YUVN uses
+	YCHD. Return 0 if no header is loaded.
 
    INPUTS
 	picture - pointer to IFFPicture structure.
 
    RESULT
-	height - image height in pixels, or 0 if BMHD not loaded.
+	height - image height in pixels, or 0 if not loaded.
 
    SEE ALSO
-	GetWidth(), GetDepth(), GetBMHD(), <iffpicture.h>
+	GetWidth(), GetDepth(), GetBMHD(), GetFXHD(), GetYCHD(), <iffpicture.h>
 
 iffpicture.library/GetDepth                             iffpicture.library/GetDepth
 
@@ -428,14 +444,16 @@ iffpicture.library/GetDepth                             iffpicture.library/GetDe
 	UWORD GetDepth(struct IFFPicture *);
 
    FUNCTION
-	Returns the number of bitplanes from the BMHD chunk. Return 0 if BMHD
-	is not loaded.
+	Returns the number of bitplanes (or effective depth). For ILBM/PBM/
+	RGBN/RGB8/ACBM uses BMHD nPlanes; for DEEP derived from DPEL element
+	depths; for YUVN/FAXX returns 0 or format-specific depth. Return 0 if
+	not applicable or no header loaded.
 
    INPUTS
 	picture - pointer to IFFPicture structure.
 
    RESULT
-	depth - number of bitplanes, or 0 if BMHD not loaded.
+	depth - number of bitplanes or effective depth, or 0 if not loaded.
 
    SEE ALSO
 	GetWidth(), GetHeight(), GetBMHD(), <iffpicture.h>
@@ -452,8 +470,10 @@ iffpicture.library/GetFormType                         iffpicture.library/GetFor
 	ULONG GetFormType(struct IFFPicture *);
 
    FUNCTION
-	Returns the IFF FORM type identifier (e.g., ID_ILBM, ID_PBM, ID_FAXX).
-	This identifies the image format variant.
+	Returns the IFF FORM type identifier (e.g., ID_ILBM, ID_PBM, ID_DEEP,
+	ID_YUVN, ID_FAXX). This identifies the image format variant. Note:
+	Video Toaster Framestore files use ID_ILBM with 16 planes and a PLTP
+	chunk; use IsFramestore() to detect this variant.
 
    INPUTS
 	picture - pointer to IFFPicture structure.
@@ -544,6 +564,88 @@ iffpicture.library/GetBMHD                               iffpicture.library/GetB
    SEE ALSO
 	ReadBMHD(), <iffpicture.h>
 
+iffpicture.library/GetFXHD                               iffpicture.library/GetFXHD
+
+   NAME
+	GetFXHD -- get pointer to FAXX header (FXHD chunk). (V1.0)
+
+   SYNOPSIS
+	fxhd = GetFXHD(picture);
+	D0                A0
+
+	struct FaxHeader *GetFXHD(struct IFFPicture *);
+
+   FUNCTION
+	Returns a pointer to the internal FaxHeader structure (FXHD chunk).
+	Only valid for images with form type ID_FAXX. Contains Width, Height,
+	LineLength, VRes, and Compression (MH, MR, MMR). The pointer remains
+	valid until the IFFPicture is freed. Returns NULL if not FAXX or not
+	loaded.
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+
+   RESULT
+	fxhd - pointer to FaxHeader structure, or NULL if not FAXX or not
+	       loaded.
+
+   SEE ALSO
+	GetFormType(), GetGPHD(), GetFAXXCompression(), <iffpicture.h>
+
+iffpicture.library/GetGPHD                               iffpicture.library/GetGPHD
+
+   NAME
+	GetGPHD -- get pointer to GPHD header (optional FAXX extension). (V1.0)
+
+   SYNOPSIS
+	gphd = GetGPHD(picture);
+	D0                 A0
+
+	struct GPHDHeader *GetGPHD(struct IFFPicture *);
+
+   FUNCTION
+	Returns a pointer to the internal GPHDHeader structure when present
+	in a FAXX file (e.g. GPSoftware extension). Optional; many FAXX
+	files have only FXHD. The pointer remains valid until the IFFPicture
+	is freed. Returns NULL if not present.
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+
+   RESULT
+	gphd - pointer to GPHDHeader structure, or NULL if not present.
+
+   SEE ALSO
+	GetFXHD(), GetFormType(), <iffpicture.h>
+
+iffpicture.library/GetYCHD                               iffpicture.library/GetYCHD
+
+   NAME
+	GetYCHD -- get pointer to YUVN header (YCHD chunk). (V1.0)
+
+   SYNOPSIS
+	ychd = GetYCHD(picture);
+	D0                 A0
+
+	struct YCHDHeader *GetYCHD(struct IFFPicture *);
+
+   FUNCTION
+	Returns a pointer to the internal YCHDHeader structure (YCHD chunk).
+	Only valid for images with form type ID_YUVN (MacroSystem VLab YUV
+	format). Contains dimensions, aspect, compression, Mode (400/411/422/
+	444, etc.), and Norm (PAL/NTSC). The pointer remains valid until the
+	IFFPicture is freed. Returns NULL if not YUVN or not loaded.
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+
+   RESULT
+	ychd - pointer to YCHDHeader structure, or NULL if not YUVN or not
+	       loaded.
+
+   SEE ALSO
+	GetFormType(), GetWidth(), GetHeight(), <iffpicture.h>
+
 iffpicture.library/GetIFFColorMap                     iffpicture.library/GetIFFColorMap
 
    NAME
@@ -595,7 +697,8 @@ iffpicture.library/GetPixelData                         iffpicture.library/GetPi
 	data - pointer to pixel data buffer, or NULL if not decoded.
 
    SEE ALSO
-	Decode(), DecodeToRGB(), GetPixelDataSize(), <iffpicture.h>
+	Decode(), DecodeToRGB(), GetPixelDataSize(), GetImageInfo(),
+	<iffpicture.h>
 
 iffpicture.library/GetPixelDataSize                   iffpicture.library/GetPixelDataSize
 
@@ -619,7 +722,42 @@ iffpicture.library/GetPixelDataSize                   iffpicture.library/GetPixe
 	size - size in bytes of pixel data, or 0 if not decoded.
 
    SEE ALSO
-	GetPixelData(), Decode(), <iffpicture.h>
+	GetPixelData(), Decode(), GetImageInfo(), <iffpicture.h>
+
+iffpicture.library/GetImageInfo                           iffpicture.library/GetImageInfo
+
+   NAME
+	GetImageInfo -- get aggregate of core image properties. (V1.0)
+
+   SYNOPSIS
+	info = GetImageInfo(picture);
+	D0                  A0
+
+	struct IFFImageInfo *GetImageInfo(struct IFFPicture *);
+
+   FUNCTION
+	Returns a pointer to an IFFImageInfo structure containing all core
+	image properties in one place: width, height, depth, formType,
+	viewportModes, compressedSize, decodedSize, hasAlpha, isHAM, isEHB,
+	isFramestore, isCompressed, isIndexed, isGrayscale, isLoaded, isDecoded.
+	Useful to avoid multiple getter calls. The structure is allocated
+	statically and remains valid until the next GetImageInfo() call or
+	until the IFFPicture is freed. Returns NULL if the picture is
+	invalid or not loaded.
+
+	isFramestore is TRUE for NewTek Video Toaster framestore (ILBM with
+	16 planes and PLTP mapping to components 6 and 7).
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+
+   RESULT
+	info - pointer to IFFImageInfo structure, or NULL if invalid/not
+	       loaded.
+
+   SEE ALSO
+	GetWidth(), GetHeight(), GetFormType(), IsFramestore(), HasAlpha(),
+	<iffpicture.h>
 
 iffpicture.library/HasAlpha                             iffpicture.library/HasAlpha
 
@@ -693,6 +831,33 @@ iffpicture.library/IsEHB                                 iffpicture.library/IsEH
    SEE ALSO
 	ReadCAMG(), AnalyzeFormat(), <iffpicture.h>
 
+iffpicture.library/IsFramestore                         iffpicture.library/IsFramestore
+
+   NAME
+	IsFramestore -- check if image is NewTek Video Toaster framestore. (V1.0)
+
+   SYNOPSIS
+	isFS = IsFramestore(picture);
+	D0                    A0
+
+	BOOL IsFramestore(struct IFFPicture *);
+
+   FUNCTION
+	Returns TRUE if the image is a NewTek Video Toaster framestore: FORM
+	ILBM with 16 bitplanes and a PLTP chunk that maps planes 0-7 to
+	component 6 and planes 8-15 to component 7 (quadrature Y/C encoding).
+	Such files are decoded via a dedicated path (luma/chroma demodulation
+	and BT.601 to RGB). Returns FALSE for standard ILBM or other formats.
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+
+   RESULT
+	isFS - TRUE if Video Toaster framestore, FALSE otherwise.
+
+   SEE ALSO
+	GetFormType(), GetImageInfo(), Decode(), <iffpicture.h>
+
 iffpicture.library/IsCompressed                         iffpicture.library/IsCompressed
 
    NAME
@@ -706,7 +871,7 @@ iffpicture.library/IsCompressed                         iffpicture.library/IsCom
 
    FUNCTION
 	Returns TRUE if the image data is compressed. This is determined from
-	the BMHD chunk during format analysis.
+	the format header (BMHD, DGBL, FXHD, etc.) during format analysis.
 
    INPUTS
 	picture - pointer to IFFPicture structure.
@@ -731,9 +896,10 @@ iffpicture.library/Decode                                 iffpicture.library/Dec
    FUNCTION
 	Decodes the IFF image data into an internal format suitable for further
 	processing. Handles all IFF formats (ILBM, PBM, RGBN, RGB8, DEEP,
-	ACBM, FAXX) and compression methods (ByteRun1, Modified Huffman,
-	Modified READ, etc.). Also handles special modes like HAM and EHB.
-	Must be called after ParseIFFPicture().
+	ACBM, FAXX, YUVN) and compression methods (ByteRun1, DEEP RUNLENGTH/
+	TVDC, Modified Huffman, Modified READ, etc.). Also handles special
+	modes: HAM, EHB, and Video Toaster Framestore (16-plane ILBM + PLTP,
+	quadrature Y/C to RGB). Must be called after ParseIFFPicture().
 
    INPUTS
 	picture - pointer to IFFPicture structure.
@@ -887,9 +1053,9 @@ iffpicture.library/AnalyzeFormat                       iffpicture.library/Analyz
 
    FUNCTION
 	Analyzes the loaded IFF image to determine its properties such as
-	color type (indexed, grayscale, RGB), special modes (HAM, EHB),
-	compression, and alpha channel presence. This information is used to
-	optimize PNG encoding.
+	color type (indexed, grayscale, RGB), special modes (HAM, EHB,
+	Framestore), DEEP/YUVN pixel elements, compression, and alpha
+	channel presence. This information is used to optimize PNG encoding.
 
 	Must be called after ParseIFFPicture() and before decoding. This
 	function is optional - Decode() will work without it, but it is needed
@@ -919,9 +1085,11 @@ iffpicture.library/GetOptimalPNGConfig           iffpicture.library/GetOptimalPN
    FUNCTION
 	Determines the optimal PNG encoding configuration for the IFF image.
 	This includes color type, bit depth, palette (if indexed), and
-	transparency settings. The configuration is stored in the provided
-	PNGConfig structure. The caller is responsible for freeing any
-	allocated palette or transparency data using PNGEncoder_FreeConfig().
+	transparency settings. Supports ILBM (including Framestore), PBM,
+	DEEP, RGBN, RGB8, ACBM, FAXX, and YUVN. The configuration is stored
+	in the provided PNGConfig structure. The caller is responsible for
+	freeing any allocated palette or transparency data using
+	PNGEncoder_FreeConfig().
 
 	The opaque parameter controls transparency handling:
 	- If FALSE (default): Honors transparentColor from BMHD when
@@ -965,7 +1133,9 @@ iffpicture.library/BestPictureModeID             iffpicture.library/BestPictureM
 
 	If a CAMG chunk is present, it uses those viewport mode flags (HAM,
 	EHB, LACE, HIRES) as requirements. If no CAMG chunk exists, it infers
-	requirements from the image properties (width, height, depth).
+	requirements from the image properties (width, height, depth). For
+	DEEP and YUVN, dimensions come from DGBL or YCHD respectively.
+	Framestore (IsFramestore()) uses BMHD dimensions.
 
 	The function verifies that the recommended mode is actually available
 	using ModeNotAvailable() before returning it to the caller.
@@ -985,16 +1155,16 @@ iffpicture.library/BestPictureModeID             iffpicture.library/BestPictureM
    SEE ALSO
 	ParseIFFPicture(), GetVPModes(), DecodeToBitMap(), <iffpicture.h>
 
-iffpicture.library/GetLastError                       iffpicture.library/GetLastError
+iffpicture.library/IFFPictureError                    iffpicture.library/IFFPictureError
 
    NAME
-	GetLastError -- get last error code. (V1.0)
+	IFFPictureError -- get last error code. (V1.0)
 
    SYNOPSIS
-	error = GetLastError(picture);
-	D0                  A0
+	error = IFFPictureError(picture);
+	D0                    A0
 
-	LONG GetLastError(struct IFFPicture *);
+	LONG IFFPictureError(struct IFFPicture *);
 
    FUNCTION
 	Returns the last error code that occurred during an IFFPicture
@@ -1008,18 +1178,18 @@ iffpicture.library/GetLastError                       iffpicture.library/GetLast
 	error - error code (IFFPICTURE_* constant) or 0 for success.
 
    SEE ALSO
-	GetErrorString(), <iffpicture.h>
+	IFFPictureErrorString(), <iffpicture.h>
 
-iffpicture.library/GetErrorString                     iffpicture.library/GetErrorString
+iffpicture.library/IFFPictureErrorString              iffpicture.library/IFFPictureErrorString
 
    NAME
-	GetErrorString -- get last error message. (V1.0)
+	IFFPictureErrorString -- get last error message. (V1.0)
 
    SYNOPSIS
-	message = GetErrorString(picture);
-	D0                     A0
+	message = IFFPictureErrorString(picture);
+	D0                         A0
 
-	const char *GetErrorString(struct IFFPicture *);
+	const char *IFFPictureErrorString(struct IFFPicture *);
 
    FUNCTION
 	Returns a pointer to a null-terminated string describing the last error.
@@ -1034,7 +1204,7 @@ iffpicture.library/GetErrorString                     iffpicture.library/GetErro
 		  if picture is NULL.
 
    SEE ALSO
-	GetLastError(), <iffpicture.h>
+	IFFPictureError(), <iffpicture.h>
 
 iffpicture.library/ReadGRAB                             iffpicture.library/ReadGRAB
 

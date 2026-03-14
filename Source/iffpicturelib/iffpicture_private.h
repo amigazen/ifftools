@@ -79,8 +79,9 @@
 #define mskLasso                3
 
 /* Compression types */
-#define cmpNone         0
-#define cmpByteRun1     1
+#define cmpNone            0
+#define cmpByteRun1        1
+#define cmpByteRun1Column  2  
 
 /* DEEP compression types */
 #define DEEP_COMPRESS_NONE         0
@@ -217,6 +218,11 @@ struct IFFPicture {
     BOOL isDecoded;
     ULONG bodyChunkSize;
     ULONG bodyChunkPosition;
+    
+    /* ILBM compression 2 (column-wise ByteRun1): pre-decoded BODY in row-major order */
+    UBYTE *bodyDecodeBuffer;
+    ULONG bodyDecodeOffset;
+    ULONG bodyDecodeSize;
     
     /* FAXX-specific: store original compression type */
     UBYTE faxxCompression;

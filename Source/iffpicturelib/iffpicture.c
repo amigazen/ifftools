@@ -174,6 +174,14 @@ VOID FreeIFFPicture(struct IFFPicture *picture)
         picture->paletteIndicesSize = 0;
     }
     
+    /* Free ILBM compression-2 pre-decoded BODY buffer if used */
+    if (picture->bodyDecodeBuffer) {
+        FreeMem(picture->bodyDecodeBuffer, picture->bodyDecodeSize);
+        picture->bodyDecodeBuffer = NULL;
+        picture->bodyDecodeOffset = 0;
+        picture->bodyDecodeSize = 0;
+    }
+    
     /* Free metadata structure if allocated */
     if (picture->metadata) {
         FreeIFFPictureMeta(picture->metadata);

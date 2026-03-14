@@ -1,0 +1,171 @@
+@DATABASE "IFF Sound Formats.guide"
+@AUTHOR "amigazen project"
+@HELP "main"
+@INDEX "index"
+
+@NODE "main" "IFF Sound Formats - Reference"
+Comprehensive reference for IFF audio format structure, encoding, and decoding. Covers all FORM types supported by iffsound.lib: 8SVX, 16SV, AIFF, AIFC, and MAUD.
+
+@{"Introduction" LINK "intro"}
+@{"IFF Container" LINK "container"}
+@{"8SVX (8-Bit Sampled Voice)" LINK "8svx"}
+@{"16SV (16-Bit Sampled Voice)" LINK "16sv"}
+@{"AIFF and AIFC" LINK "aiff"}
+@{"MAUD (Amiga Audio)" LINK "maud"}
+@{"Compression Algorithms" LINK "compression"}
+@{"Metadata Chunks" LINK "metadata"}
+@{"References" LINK "refs"}
+@{"Index" LINK "index"}
+@ENDNODE
+
+@NODE "intro" "Introduction"
+IFF Sound Formats
+
+IFF (Interchange File Format) is the standard container for multimedia on Amiga. Sound FORMs store sampled audio; each FORM type has a specific chunk layout and sample encoding. This guide documents every IFF sound format supported by iffsound.lib: chunk structures, byte layout, compression, and decoding.
+
+This guide is the sister document to "IFF Picture Formats.guide". Sources: EA IFF 85, 8SVX supplement (8svx.txt), AIFF/AIFC specifications, iffsoundlib implementation, and example code (ebMuse, libaiff, AIFF_dtc).
+@{"Main" LINK "main"}
+@{"IFF Container" LINK "container"}
+@ENDNODE
+
+@NODE "container" "IFF Container Basics"
+IFF Sound Formats
+
+Every IFF file starts with:
+? FORM header: 4 bytes 'FORM', 4-byte big-endian length (of everything after these 8 bytes)
+? Form type: 4 bytes (e.g. '8SVX', 'AIFF', 'MAUD')
+? Chunks: sequence of chunk ID (4 bytes) + length (4 bytes big-endian) + data (length bytes). If length is odd, a pad byte follows so next chunk is word-aligned.
+
+Property chunks (VHDR, COMM, etc.) typically come before the main data chunk (BODY or SSND). Parsers use PropChunk() to collect properties and StopChunk() to stop at the data chunk. All multi-byte values are big-endian unless otherwise specified (e.g. AIFC sowt).
+@{"Main" LINK "main"}
+@ENDNODE
+
+@NODE "8svx" "8SVX - 8-Bit Sampled Voice"
+IFF Sound Formats
+
+FORM 8SVX is the standard Amiga 8-bit sampled voice format (EA IFF supplement). Used for one-shot sounds and multi-octave musical instruments. One required property (VHDR), one data chunk (BODY), and optional properties and envelopes.
+
+VHDR (Voice Header) - required. Voice8Header layout:
+? oneShotHiSamples (ULONG) - number of samples in the high-octave one-shot part
+? repeatHiSamples (ULONG) - number of samples in the high-octave repeat part
+? samplesPerHiCycle (ULONG) - samples per cycle in high octave, or 0 if unknown
+? samplesPerSec (UWORD) - sampling rate in Hz
+? ctOctave (UBYTE) - number of octaves of waveform data
+? sCompression (UBYTE) - 0 = none, 1 = Fibonacci-delta
+? volume (Fixed) - playback volume 0 to Unity (0x10000); 16.16 fixed-point
+
+Octave rule: each lower octave has twice as many samples in both one-shot and repeat parts. Total BODY samples = (2^0 + ... + 2^(ctOctave-1)) * (oneShotHiSamples + repeatHiSamples). For one-shot only, set repeatHiSamples = 0 and ctOctave = 1.
+
+BODY: Array of 8-bit signed samples (-128 to 127). Stored by octave: highest octave first (oneShot then repeat), then next octave (twice the length), and so on. If sCompression = 1, entire BODY is Fibonacci-delta compressed (see Compression node).
+
+Optional: NAME, (c) , AUTH, ANNO (text); ATAK and RLSE (envelope EGPoint arrays: UWORD duration in ms, Fixed dest); CHAN (channel: RIGHT=4, LEFT=2, STEREO=6); PAN (Fixed 0..Unity); SEQN (loop pairs: start/end offsets); FADE (loop number for fade).
+@{"Main" LINK "main"}
+@{"Compression" LINK "compression"}
+@{"Metadata" LINK "metadata"}
+@ENDNODE
+
+@NODE "16sv" "16SV - 16-Bit Sampled Voice"
+IFF Sound Formats
+
+FORM 16SV uses the same structure as 8SVX but stores 16-bit samples in the BODY. Same VHDR chunk (oneShotHiSamples, repeatHiSamples, etc. still refer to sample count; each sample is 2 bytes). Same optional chunks (NAME, AUTH, ATAK, RLSE, CHAN, PAN, SEQN, FADE).
+
+BODY: 16-bit signed samples, big-endian. Layout by octave is the same as 8SVX; total bytes = total samples * 2. iffsound.lib currently supports uncompressed 16SV only (sCompression must be 0).
+@{"Main" LINK "main"}
+@{"8SVX" LINK "8svx"}
+@ENDNODE
+
+@NODE "aiff" "AIFF and AIFC"
+IFF Sound Formats
+
+FORM AIFF (Audio Interchange File Format) and FORM AIFC (with compression) are Mac/Apple-origin formats. Required: COMM (Common) chunk. Data: SSND (sound data) chunk.
+
+COMM (Common) - required. AIFFCommon layout:
+? numChannels (UWORD) - 1 = mono, 2 = stereo
+? numSampleFrames (ULONG) - number of sample frames (one frame = one sample per channel)
+? sampleSize (UWORD) - bits per sample (1-32)
+? sampleRate (10 bytes) - 80-bit IEEE 754 extended double (big-endian)
+
+For AIFC, the COMM chunk is extended: after the 10-byte sampleRate come compressionType (4-byte ID, e.g. 'NONE', 'ulaw', 'sowt') and optionally a Pascal-style compressionName string. iffsound.lib supports: NONE/lpcm/twos (linear PCM big-endian), sowt (linear PCM little-endian), ULAW/ulaw (G.711 mu-Law), ALAW/alaw (G.711 A-Law), FL32/fl32 (32-bit float), ADP4 (4-bit ADPCM).
+
+SSND (Sound Data) - required. First 8 bytes: offset (ULONG, usually 0) and blockSize (ULONG, usually 0). Then raw audio bytes. Size = numChannels * numSampleFrames * (sampleSize/8), or as defined by compression. Sample rate is converted from 80-bit extended via IEEE754ReadExtended(); playback uses that rate.
+
+Optional: FVER (format version); NAME, (c) , AUTH, ANNO; MARK (markers); INST (instrument with loops); COMT (comments with timestamps).
+@{"Main" LINK "main"}
+@{"Compression" LINK "compression"}
+@{"Metadata" LINK "metadata"}
+@ENDNODE
+
+@NODE "maud" "MAUD - Amiga Audio"
+IFF Sound Formats
+
+FORM MAUD is an Amiga native audio format. One required property chunk (MAUD header), one data chunk (BODY).
+
+MAUD header chunk - required. MAUDHeader layout:
+? numChannels (UWORD)
+? sampleSize (UWORD) - bits per sample
+? sampleRate (ULONG) - sample rate in Hz
+? numSampleFrames (ULONG) - number of sample frames
+? compression (ULONG) - 0 = none, 2 = ADPCM2, 3 = ADPCM3
+
+BODY: Raw audio bytes. If compression = 0, BODY size = numSampleFrames * numChannels * ceil(sampleSize/8). If compression 2 or 3, BODY is ADPCM-encoded; decoder produces 16-bit PCM. iffsound.lib supports compression 0, 2, and 3.
+@{"Main" LINK "main"}
+@{"Compression" LINK "compression"}
+@ENDNODE
+
+@NODE "compression" "Compression Algorithms"
+IFF Sound Formats
+
+Fibonacci-delta (8SVX): 4-bit nibbles map through a 16-entry table of Fibonacci-style deltas. Source layout: 1 pad byte, 1 initial sample byte, then N bytes encoding 2*N nibbles (high nibble first). Each nibble adds codeToDelta[nibble] to running value; output is 8-bit signed. Compressed size about half uncompressed plus 2 bytes.
+
+ADPCM2 / ADPCM3 (MAUD): Amiga-style ADPCM. Decoder maintains step index and predictor; each compressed unit expands to 16-bit PCM. iffsound.lib implements DecodeADPCM2 and DecodeADPCM3 for MAUD BODY.
+
+AIFF/AIFC: NONE/lpcm/twos = linear PCM big-endian. sowt = linear PCM little-endian. ULAW/ulaw = G.711 mu-Law (8-bit to 16-bit). ALAW/alaw = G.711 A-Law. FL32/fl32 = 32-bit IEEE float. ADP4 = 4-bit ADPCM (library may support decode). 80-bit sample rate decoded via IEEE 754 extended (Motorola 68881-style).
+@{"Main" LINK "main"}
+@{"8SVX" LINK "8svx"}
+@{"MAUD" LINK "maud"}
+@ENDNODE
+
+@NODE "metadata" "Metadata Chunks"
+IFF Sound Formats
+
+Common across sound FORMs:
+? NAME - voice/sample name (null-terminated string)
+? (c)  - copyright notice
+? AUTH - author
+? ANNO - annotation text (may appear multiple times)
+? FVER - format version (AIFC: timestamp; others: version string)
+
+8SVX-specific: ATAK (attack envelope EGPoint[]), RLSE (release envelope), CHAN (channel assignment), PAN (panning Fixed), SEQN (loop pairs), FADE (fade loop number).
+
+AIFF-specific: MARK (markers: id, position, name), INST (instrument: baseNote, detune, note/velocity range, gain, sustain/release loops), COMT (comments with timestamp and marker id).
+@{"Main" LINK "main"}
+@{"8SVX" LINK "8svx"}
+@{"AIFF" LINK "aiff"}
+@ENDNODE
+
+@NODE "refs" "References"
+IFF Sound Formats
+
+EA IFF 85; 8SVX IFF 8-Bit Sampled Voice (8svx.txt); AIFF/AIFC specifications; iffsoundlib (iffsound.h, iffsound.c, sound_decoder.c, aiff_decompressor.c); examples: ebMuse, libaiff-5.0, AIFF_dtc, MergeAIFF.
+@{"Main" LINK "main"}
+@ENDNODE
+
+@NODE "index" "Index"
+IFF Sound Formats
+
+Quick index.
+
+@{"Main" LINK "main"}
+@{"References" LINK "refs"}
+
+Formats:
+@{"8SVX" LINK "8svx"}
+@{"16SV" LINK "16sv"}
+@{"AIFF/AIFC" LINK "aiff"}
+@{"MAUD" LINK "maud"}
+
+Reference:
+@{"IFF Container" LINK "container"}
+@{"Compression" LINK "compression"}
+@{"Metadata" LINK "metadata"}
+@ENDNODE

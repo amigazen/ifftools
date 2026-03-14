@@ -817,6 +817,148 @@ static LONG UnpackByteRun1Buffer(const UBYTE *src, ULONG srcLen, UBYTE *dest, UL
     return (outPos == destLen) ? RETURN_OK : RETURN_FAIL;
 }
 
+/*
+** UnpackByteRun1Exact - Decompress exactly destLen bytes from buffer; return source bytes consumed.
+** Returns: number of source bytes consumed, or -1 on error.
+** Used for ILBM compression 2 (column-wise ByteRun1).
+*/
+static LONG UnpackByteRun1Exact(const UBYTE *src, ULONG srcLen, UBYTE *dest, ULONG destLen)
+{
+    ULONG inPos = 0;
+    ULONG outPos = 0;
+    UBYTE n;
+    ULONG count;
+    UBYTE val;
+
+    while (inPos < srcLen && outPos < destLen) {
+        n = src[inPos++];
+        if (n <= 127) {
+            count = (ULONG)(n + 1);
+            if (inPos + count > srcLen || outPos + count > destLen) return -1;
+            CopyMem((APTR)(src + inPos), dest + outPos, count);
+            inPos += count;
+            outPos += count;
+        } else if (n != 128) {
+            count = 257 - (ULONG)n;
+            if (inPos >= srcLen || outPos + count > destLen) return -1;
+            val = src[inPos++];
+            while (count-- > 0) dest[outPos++] = val;
+        }
+    }
+    return (outPos == destLen) ? (LONG)inPos : -1;
+}
+
+/*
+** PrepareBodyDecodeBufferColumnWise - For ILBM compression 2 (Column-wise ByteRun1),
+** read entire BODY, decompress column-by-column into row-major buffer, set picture->bodyDecodeBuffer.
+** Returns: RETURN_OK on success, RETURN_FAIL on error.
+*/
+static LONG PrepareBodyDecodeBufferColumnWise(struct IFFPicture *picture)
+{
+    UWORD width, height, depth, rowBytes;
+    ULONG nPlanes;
+    ULONG rawSize;
+    UBYTE *bodyBuf;
+    UBYTE *rowMajorBuf;
+    UBYTE *colBuf;
+    ULONG inPos;
+    LONG consumed;
+    UWORD x, p, y;
+    struct ContextNode *cn;
+
+    width = picture->bmhd->w;
+    height = picture->bmhd->h;
+    depth = picture->bmhd->nPlanes;
+    rowBytes = RowBytes(width);
+    nPlanes = (ULONG)depth + (picture->bmhd->masking == mskHasMask ? 1UL : 0UL);
+    rawSize = (ULONG)rowBytes * nPlanes * (ULONG)height;
+
+    cn = CurrentChunk(picture->iff);
+    if (!cn || cn->cn_ID != ID_BODY || cn->cn_Size == 0) {
+        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Expected BODY for compression 2");
+        return RETURN_FAIL;
+    }
+
+    bodyBuf = (UBYTE *)AllocMem(cn->cn_Size, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!bodyBuf) {
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate BODY buffer for compression 2");
+        return RETURN_FAIL;
+    }
+    if (ReadChunkBytes(picture->iff, bodyBuf, cn->cn_Size) != cn->cn_Size) {
+        FreeMem(bodyBuf, cn->cn_Size);
+        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read BODY for compression 2");
+        return RETURN_FAIL;
+    }
+
+    rowMajorBuf = (UBYTE *)AllocMem(rawSize, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!rowMajorBuf) {
+        FreeMem(bodyBuf, cn->cn_Size);
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate decode buffer for compression 2");
+        return RETURN_FAIL;
+    }
+
+    colBuf = (UBYTE *)AllocMem(height, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!colBuf) {
+        FreeMem(rowMajorBuf, rawSize);
+        FreeMem(bodyBuf, cn->cn_Size);
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate column buffer for compression 2");
+        return RETURN_FAIL;
+    }
+
+    inPos = 0;
+    for (x = 0; x < rowBytes; x++) {
+        for (p = 0; p < (UWORD)nPlanes; p++) {
+            if (inPos >= (ULONG)cn->cn_Size) {
+                FreeMem(colBuf, height);
+                FreeMem(rowMajorBuf, rawSize);
+                FreeMem(bodyBuf, cn->cn_Size);
+                SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Compression 2 BODY truncated");
+                return RETURN_FAIL;
+            }
+            consumed = UnpackByteRun1Exact(bodyBuf + inPos, cn->cn_Size - inPos, colBuf, (ULONG)height);
+            if (consumed < 0) {
+                FreeMem(colBuf, height);
+                FreeMem(rowMajorBuf, rawSize);
+                FreeMem(bodyBuf, cn->cn_Size);
+                SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Compression 2 ByteRun1 decode failed");
+                return RETURN_FAIL;
+            }
+            inPos += (ULONG)consumed;
+            for (y = 0; y < height; y++) {
+                rowMajorBuf[y * nPlanes * rowBytes + p * rowBytes + x] = colBuf[y];
+            }
+        }
+    }
+
+    FreeMem(colBuf, height);
+    FreeMem(bodyBuf, cn->cn_Size);
+    picture->bodyDecodeBuffer = rowMajorBuf;
+    picture->bodyDecodeOffset = 0;
+    picture->bodyDecodeSize = rawSize;
+    return RETURN_OK;
+}
+
+/*
+** ReadBodyRow - Read one row of BODY data (for ILBM). Uses bodyDecodeBuffer when set (compression 2),
+** else ByteRun1 or raw read. Returns: number of bytes read, or -1 on error.
+*/
+static LONG ReadBodyRow(struct IFFPicture *picture, UBYTE *dest, ULONG rowBytes)
+{
+    if (picture->bodyDecodeBuffer) {
+        if (picture->bodyDecodeOffset + rowBytes > picture->bodyDecodeSize) return -1;
+        CopyMem(picture->bodyDecodeBuffer + picture->bodyDecodeOffset, dest, rowBytes);
+        picture->bodyDecodeOffset += rowBytes;
+        return (LONG)rowBytes;
+    }
+    if (picture->bmhd->compression == cmpByteRun1) {
+        return DecompressByteRun1(picture->iff, dest, (LONG)rowBytes);
+    }
+    if (picture->bmhd->compression != cmpNone) {
+        return -1;  /* Unsupported compression (e.g. > 2) */
+    }
+    return (LONG)ReadChunkBytes(picture->iff, dest, rowBytes);
+}
+
 /* Video Toaster Framestore constants (quadrature YCbCr decode) */
 #define VT_Y_SCALE   1.8351
 #define VT_Y_OFFSET  123.25
@@ -1137,6 +1279,19 @@ LONG DecodeILBM(struct IFFPicture *picture)
         }
     }
     
+    /* ILBM compression 2 (Column-wise ByteRun1): pre-decode entire BODY into row-major buffer */
+    if (picture->bmhd->compression == cmpByteRun1Column) {
+        if (PrepareBodyDecodeBufferColumnWise(picture) != RETURN_OK) {
+            if (alphaValues) FreeMem(alphaValues, width);
+            FreeMem(planeBuffer, rowBytes);
+            if (picture->paletteIndices) {
+                FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+            }
+            FreeMem(picture->pixelData, picture->pixelDataSize);
+            return RETURN_FAIL;
+        }
+    }
+    
     rgbOut = picture->pixelData;
     
     /* Process each row */
@@ -1162,120 +1317,64 @@ LONG DecodeILBM(struct IFFPicture *picture)
             
             /* Decode Red component (planes 0-7) */
             for (plane = 0; plane < 8; plane++) {
-                if (picture->bmhd->compression == cmpByteRun1) {
-                    bytesRead = DecompressByteRun1(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(rValues, width);
-                        FreeMem(gValues, width);
-                        FreeMem(bValues, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        if (alphaValues) FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed");
-                        return RETURN_FAIL;
-                    }
-                } else {
-                    bytesRead = ReadChunkBytes(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(rValues, width);
-                        FreeMem(gValues, width);
-                        FreeMem(bValues, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        if (alphaValues) FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
-                        return RETURN_FAIL;
-                    }
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rValues, width);
+                    FreeMem(gValues, width);
+                    FreeMem(bValues, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
+                    return RETURN_FAIL;
                 }
-                
                 /* Extract bits from this plane (optimized) */
                 ExtractBitsFromPlane(planeBuffer, rValues, width, rowBytes, plane);
             }
             
             /* Decode Green component (planes 8-15) */
             for (plane = 8; plane < 16; plane++) {
-                if (picture->bmhd->compression == cmpByteRun1) {
-                    bytesRead = DecompressByteRun1(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(rValues, width);
-                        FreeMem(gValues, width);
-                        FreeMem(bValues, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        if (alphaValues) FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed");
-                        return RETURN_FAIL;
-                    }
-                } else {
-                    bytesRead = ReadChunkBytes(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(rValues, width);
-                        FreeMem(gValues, width);
-                        FreeMem(bValues, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        if (alphaValues) FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
-                        return RETURN_FAIL;
-                    }
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rValues, width);
+                    FreeMem(gValues, width);
+                    FreeMem(bValues, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
+                    return RETURN_FAIL;
                 }
-                
                 /* Extract bits from this plane (optimized) */
                 ExtractBitsFromPlane(planeBuffer, gValues, width, rowBytes, plane - 8);
             }
             
             /* Decode Blue component (planes 16-23) */
             for (plane = 16; plane < 24; plane++) {
-                if (picture->bmhd->compression == cmpByteRun1) {
-                    bytesRead = DecompressByteRun1(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(rValues, width);
-                        FreeMem(gValues, width);
-                        FreeMem(bValues, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        if (alphaValues) FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed");
-                        return RETURN_FAIL;
-                    }
-                } else {
-                    bytesRead = ReadChunkBytes(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(rValues, width);
-                        FreeMem(gValues, width);
-                        FreeMem(bValues, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        if (alphaValues) FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
-                        return RETURN_FAIL;
-                    }
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rValues, width);
+                    FreeMem(gValues, width);
+                    FreeMem(bValues, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
+                    return RETURN_FAIL;
                 }
-                
                 /* Extract bits from this plane (optimized) */
                 ExtractBitsFromPlane(planeBuffer, bValues, width, rowBytes, plane - 16);
             }
             
             /* Read mask plane if present (comes after all data planes) */
             if (picture->bmhd->masking == mskHasMask) {
-                if (picture->bmhd->compression == cmpByteRun1) {
-                    bytesRead = DecompressByteRun1(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(rValues, width);
-                        FreeMem(gValues, width);
-                        FreeMem(bValues, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed for mask");
-                        return RETURN_FAIL;
-                    }
-                } else {
-                    bytesRead = ReadChunkBytes(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(rValues, width);
-                        FreeMem(gValues, width);
-                        FreeMem(bValues, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read mask plane");
-                        return RETURN_FAIL;
-                    }
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rValues, width);
+                    FreeMem(gValues, width);
+                    FreeMem(bValues, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read mask plane");
+                    return RETURN_FAIL;
                 }
-                
                 /* Extract mask bits to alpha channel (optimized) */
                 ExtractAlphaFromPlane(planeBuffer, alphaValues, width, rowBytes);
             }
@@ -1310,55 +1409,28 @@ LONG DecodeILBM(struct IFFPicture *picture)
             
             /* Read all data planes for this row (planes 0 through nPlanes-1) */
             for (plane = 0; plane < depth; plane++) {
-                /* Read/decompress plane data */
-                if (picture->bmhd->compression == cmpByteRun1) {
-                    bytesRead = DecompressByteRun1(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(pixelIndices, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        if (alphaValues) FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed");
-                        return RETURN_FAIL;
-                    }
-                } else {
-                    /* Uncompressed */
-                    bytesRead = ReadChunkBytes(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(pixelIndices, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        if (alphaValues) FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
-                        return RETURN_FAIL;
-                    }
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(pixelIndices, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
+                    return RETURN_FAIL;
                 }
-                
                 /* Extract bits from this plane to build pixel indices (optimized) */
                 ExtractBitsFromPlane(planeBuffer, pixelIndices, width, rowBytes, plane);
             }
             
             /* Read mask plane if present (comes after all data planes) */
             if (picture->bmhd->masking == mskHasMask) {
-                /* Read/decompress mask plane */
-                if (picture->bmhd->compression == cmpByteRun1) {
-                    bytesRead = DecompressByteRun1(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(pixelIndices, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed for mask");
-                        return RETURN_FAIL;
-                    }
-                } else {
-                    bytesRead = ReadChunkBytes(picture->iff, planeBuffer, rowBytes);
-                    if (bytesRead != rowBytes) {
-                        FreeMem(pixelIndices, width);
-                        FreeMem(planeBuffer, rowBytes);
-                        FreeMem(alphaValues, width);
-                        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read mask plane");
-                        return RETURN_FAIL;
-                    }
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(pixelIndices, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read mask plane");
+                    return RETURN_FAIL;
                 }
-                
                 /* Extract mask bits to alpha channel (optimized) */
                 ExtractAlphaFromPlane(planeBuffer, alphaValues, width, rowBytes);
             }
@@ -1475,6 +1547,14 @@ LONG DecodeHAM(struct IFFPicture *picture)
         return RETURN_FAIL;
     }
     
+    /* ILBM compression 2 (Column-wise ByteRun1): pre-decode entire BODY */
+    if (picture->bmhd->compression == cmpByteRun1Column) {
+        if (PrepareBodyDecodeBufferColumnWise(picture) != RETURN_OK) {
+            FreeMem(planeBuffer, rowBytes);
+            return RETURN_FAIL;
+        }
+    }
+    
     rgbOut = picture->pixelData;
     
     /* Process each row */
@@ -1489,25 +1569,13 @@ LONG DecodeHAM(struct IFFPicture *picture)
         
         /* Read all planes for this row */
         for (plane = 0; plane < depth; plane++) {
-            /* Read/decompress plane data */
-            if (picture->bmhd->compression == cmpByteRun1) {
-                bytesRead = DecompressByteRun1(picture->iff, planeBuffer, rowBytes);
-                if (bytesRead != rowBytes) {
-                    FreeMem(pixelValues, width);
-                    FreeMem(planeBuffer, rowBytes);
-                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed");
-                    return RETURN_FAIL;
-                }
-            } else {
-                bytesRead = ReadChunkBytes(picture->iff, planeBuffer, rowBytes);
-                if (bytesRead != rowBytes) {
-                    FreeMem(pixelValues, width);
-                    FreeMem(planeBuffer, rowBytes);
-                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
-                    return RETURN_FAIL;
-                }
+            bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+            if (bytesRead != (LONG)rowBytes) {
+                FreeMem(pixelValues, width);
+                FreeMem(planeBuffer, rowBytes);
+                SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
+                return RETURN_FAIL;
             }
-            
             /* Extract bits from this plane (optimized) */
             ExtractBitsFromPlane(planeBuffer, pixelValues, width, rowBytes, plane);
         }
@@ -1616,6 +1684,14 @@ LONG DecodeEHB(struct IFFPicture *picture)
         return RETURN_FAIL;
     }
     
+    /* ILBM compression 2 (Column-wise ByteRun1): pre-decode entire BODY */
+    if (picture->bmhd->compression == cmpByteRun1Column) {
+        if (PrepareBodyDecodeBufferColumnWise(picture) != RETURN_OK) {
+            FreeMem(planeBuffer, rowBytes);
+            return RETURN_FAIL;
+        }
+    }
+    
     rgbOut = picture->pixelData;
     
     /* Process each row */
@@ -1630,25 +1706,13 @@ LONG DecodeEHB(struct IFFPicture *picture)
         
         /* Read all planes for this row */
         for (plane = 0; plane < depth; plane++) {
-            /* Read/decompress plane data */
-            if (picture->bmhd->compression == cmpByteRun1) {
-                bytesRead = DecompressByteRun1(picture->iff, planeBuffer, rowBytes);
-                if (bytesRead != rowBytes) {
-                    FreeMem(pixelIndices, width);
-                    FreeMem(planeBuffer, rowBytes);
-                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed");
-                    return RETURN_FAIL;
-                }
-            } else {
-                bytesRead = ReadChunkBytes(picture->iff, planeBuffer, rowBytes);
-                if (bytesRead != rowBytes) {
-                    FreeMem(pixelIndices, width);
-                    FreeMem(planeBuffer, rowBytes);
-                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
-                    return RETURN_FAIL;
-                }
+            bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+            if (bytesRead != (LONG)rowBytes) {
+                FreeMem(pixelIndices, width);
+                FreeMem(planeBuffer, rowBytes);
+                SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
+                return RETURN_FAIL;
             }
-            
             /* Extract bits from this plane to build pixel indices (optimized) */
             ExtractBitsFromPlane(planeBuffer, pixelIndices, width, rowBytes, plane);
         }

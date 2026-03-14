@@ -640,7 +640,8 @@ struct BitMapHeader {
     UBYTE masking;          /* masking technique (use msk* constants below) */
     UBYTE compression;      /* compression algorithm:
                              *   0 = none
-                             *   1 = ByteRun1 (RLE) */
+                             *   1 = ByteRun1 (RLE) per row
+                             *   2 = ByteRun1 per column */
     UBYTE pad1;             /* unused; ignore on read, write as 0 */
     UWORD transparentColor; /* transparent "color number" (palette index)
                              *   only valid if masking == mskHasTransparentColor */
