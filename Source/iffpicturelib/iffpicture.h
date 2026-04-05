@@ -426,6 +426,19 @@ struct GEOFList *ReadAllGEOF(struct IFFPicture *picture);
  * HasAlpha/IsHAM/IsEHB/IsCompressed() - Boolean queries about image properties.
  *                                       These are determined during format analysis.
  *
+ * GetMultipaletteChunkId() - After load (DecodePicture path has run
+ *          ReadILBMMultipalette), returns which multipalette chunk drives indexed
+ *          row palettes: MAKE_ID('S','H','A','M'), MAKE_ID('P','C','H','G'),
+ *          MAKE_ID('C','T','B','L'), or 0 if none. Precedence matches decode:
+ *          SHAM over PCHG over CTBL. Compare with MAKE_ID; do not assume numeric
+ *          values across library versions.
+ *
+ * IsMultipaletteActive() - TRUE iff GetMultipaletteChunkId() != 0.
+ *
+ * GetPaletteIndices() - After Decode(), NULL or pointer to w*h bytes of
+ *          original palette indices (library-owned; valid until FreeIFFPicture).
+ *          Absent when not applicable; multipalette RGB images may still omit this.
+ *
  * GetImageInfo() - Returns a pointer to an IFFImageInfo structure containing
  *                  all core image properties (dimensions, format, flags, etc.)
  *                  in a single structure. This is useful for getting a complete
@@ -453,6 +466,9 @@ BOOL IsHAM(struct IFFPicture *picture);
 BOOL IsEHB(struct IFFPicture *picture);
 BOOL IsFramestore(struct IFFPicture *picture);  /* TRUE if NewTek Video Toaster framestore (16-plane ILBM + PLTP) */
 BOOL IsCompressed(struct IFFPicture *picture);
+ULONG GetMultipaletteChunkId(struct IFFPicture *picture);
+BOOL IsMultipaletteActive(struct IFFPicture *picture);
+UBYTE *GetPaletteIndices(struct IFFPicture *picture);
 
 /* IFFImageInfo structure - aggregate of core image properties */
 struct IFFImageInfo {
@@ -468,6 +484,7 @@ struct IFFImageInfo {
     BOOL isEHB;                 /* TRUE if image uses Extra Half-Brite mode */
     BOOL isFramestore;          /* TRUE if NewTek Video Toaster framestore (16-plane ILBM + PLTP) */
     BOOL isCompressed;          /* TRUE if image data is compressed */
+    ULONG multipaletteChunkId;  /* IFF chunk ID from GetMultipaletteChunkId(), or 0 */
     BOOL isIndexed;             /* TRUE if image uses indexed color (palette) */
     BOOL isGrayscale;           /* TRUE if image is grayscale */
     BOOL isLoaded;              /* TRUE if image has been loaded/parsed */

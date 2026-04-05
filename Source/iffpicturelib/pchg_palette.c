@@ -72,27 +72,33 @@ static void PCHG_Decompress(const ULONG *Source, UBYTE *Dest, WORD *Tree, ULONG 
     }
 }
 
-BOOL IFFMultipalette_Active(const struct IFFPicture *picture)
+/*
+** IFFMultipalette_SourceChunkId - Internal: IFF chunk ID of multipalette source for decode
+** (ID_SHAM, ID_PCHG, or ID_CTBL), or 0. SHAM wins over PCHG when both were in file.
+*/
+ULONG IFFMultipalette_SourceChunkId(const struct IFFPicture *picture)
 {
     if (!picture) {
-        return FALSE;
+        return 0UL;
     }
-    /* SHAM wins over PCHG when both exist (ReadILBMMultipalette clears mpalPchg only). */
     if (picture->mpalSham) {
-        return TRUE;
+        return ID_SHAM;
     }
-    /* Drive PCHG from payload pointer, not only mpalPchg BOOL, so a struct/toolchain
-     * mismatch cannot drop per-scanline decode while PNG still looks "indexed". */
     if (picture->mpalPchgPayload != NULL && picture->mpalPchgPayloadSize >= 4U) {
-        return TRUE;
+        return ID_PCHG;
     }
     if (picture->mpalPchg) {
-        return TRUE;
+        return ID_PCHG;
     }
     if (picture->mpalCtbl && picture->mpalCtblData && picture->mpalCtblSize >= 2) {
-        return TRUE;
+        return ID_CTBL;
     }
-    return FALSE;
+    return 0UL;
+}
+
+BOOL IFFMultipalette_Active(const struct IFFPicture *picture)
+{
+    return IFFMultipalette_SourceChunkId(picture) != 0UL ? TRUE : FALSE;
 }
 
 /*

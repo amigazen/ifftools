@@ -982,20 +982,22 @@ BOOL IsCompressed(struct IFFPicture *picture)
     return picture->isCompressed;
 }
 
-BOOL IFFPicture_HasPCHGData(struct IFFPicture *picture)
+ULONG GetMultipaletteChunkId(struct IFFPicture *picture)
 {
-    if (!picture) {
-        return FALSE;
-    }
-    return (picture->mpalPchgPayload != NULL && picture->mpalPchgPayloadSize >= 4U) ? TRUE : FALSE;
+    return IFFMultipalette_SourceChunkId(picture);
 }
 
-BOOL IFFPicture_HasSHAMData(struct IFFPicture *picture)
+BOOL IsMultipaletteActive(struct IFFPicture *picture)
+{
+    return IFFMultipalette_Active(picture);
+}
+
+UBYTE *GetPaletteIndices(struct IFFPicture *picture)
 {
     if (!picture) {
-        return FALSE;
+        return NULL;
     }
-    return (picture->mpalSham && picture->mpalShamAlloc != NULL && picture->mpalShamAllocSize >= 34U) ? TRUE : FALSE;
+    return picture->paletteIndices;
 }
 
 /*
@@ -1025,6 +1027,7 @@ struct IFFImageInfo *GetImageInfo(struct IFFPicture *picture)
     info.isEHB = IsEHB(picture);
     info.isFramestore = IsFramestore(picture);
     info.isCompressed = IsCompressed(picture);
+    info.multipaletteChunkId = GetMultipaletteChunkId(picture);
     info.isIndexed = picture->isIndexed;
     info.isGrayscale = picture->isGrayscale;
     info.isLoaded = picture->isLoaded;

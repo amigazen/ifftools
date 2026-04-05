@@ -6,8 +6,7 @@
 */
 
 #include "main.h"
-#include "iffpicturelib/iffpicture_private.h"
-#include "iffpicturelib/iffpicture.h"  /* For ReadCopyright, ReadAuthor */
+#include "iffpicturelib/iffpicture.h"  /* ReadCopyright, ReadAuthor, palette accessors */
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <png.h>  /* For png_text, png_set_text */
@@ -250,8 +249,9 @@ LONG PNGEncoder_Write(const char *filename, UBYTE *rgbData,
         /* Use stored indices only when PNG PLTE matches decode (single global CMAP).
          * Multipalette decode fills rgbData from per-line palettes; indices would
          * wrongly map through static PLTE (e.g. 16-colour SHAM looks flat). */
-        if (picture && picture->paletteIndices && !IFFMultipalette_Active(picture)) {
-            paletteIndices = picture->paletteIndices;
+        if (picture && GetPaletteIndices(picture) != NULL
+            && !IsMultipaletteActive(picture)) {
+            paletteIndices = GetPaletteIndices(picture);
             useOriginalIndices = TRUE;
         } else {
             /* Need to convert RGB to palette indices */

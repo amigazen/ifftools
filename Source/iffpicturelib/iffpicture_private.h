@@ -1,8 +1,8 @@
 /*
 ** iffpicture_private.h - IFFPicture Library Private Definitions
 **
-** Internal structures and functions used by the library implementation
-** This header is only included by library source files, not by clients
+** Internal structures and functions used by the library implementation.
+** Only library implementation sources include this header, not application code.
 */
 
 #ifndef IFFPICTURE_PRIVATE_H
@@ -329,6 +329,7 @@ LONG IFFMultipalette_Init(struct IFFPicture *picture, UBYTE *pal768,
 LONG IFFMultipalette_ApplyScanline(struct IFFMultipaletteState *st, UWORD row,
     UBYTE *pal768);
 BOOL IFFMultipalette_Active(const struct IFFPicture *picture);
+ULONG IFFMultipalette_SourceChunkId(const struct IFFPicture *picture);
 
 #endif /* IFFPICTURE_PRIVATE_H */
 

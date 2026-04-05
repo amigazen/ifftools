@@ -41,7 +41,8 @@ Key Features:
 ? Handles ByteRun1 compression and ITU-T T.4 fax compression
 ? Preserves metadata (copyright, author, annotations)
 ? Optional opaque mode for legacy color 0 handling
-? Detailed conversion information output
+? Detailed conversion information output (IFF chunk list, multipalette summary)
+? ILBM/PBM (and stored props on ACBM): PCHG, SHAM, CTBL multipalette decode to RGB when present
 
 The tool uses the IFFPicture library which provides a comprehensive API for IFF image processing, following the iffparse.library pattern for consistency with AmigaOS standards.
 @ENDNODE
@@ -78,6 +79,8 @@ iff2png source.iff target.png STRIP
 Output:
 When not in quiet mode, iff2png displays detailed information about:
 ? IFF source format, file size, dimensions, bit planes
+? A numbered list of top-level FORM chunks (ID, size, short summary); BMHD summary uses the same loaded header as the decoder
+? One line reporting which multipalette chunk drives the library decode (SHAM, PCHG, CTBL, or none), from the public IFFPicture API
 ? Compression method and masking information
 ? PNG target color type, bit depth, palette entries
 ? Transparency settings
@@ -126,10 +129,10 @@ iff2png supports all major IFF image formats used on Amiga systems.
 @{"PNG Output" LINK "png"}
 
 ILBM (InterLeaved BitMap):
-Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue).
+Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Optional property chunks PCHG, SHAM, and CTBL supply per-scanline or static multipalette data; when present, indexed ILBM (and PBM) decode applies them before each scanline's BODY data (SHAM takes precedence over PCHG when both exist). Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue).
 
 PBM (Packed BitMap):
-Similar to ILBM but with packed pixels (one byte per pixel) instead of bitplanes. Note: This is not the same as NetPBM.
+Similar to ILBM but with packed pixels (one byte per pixel) instead of bitplanes. May carry the same optional PCHG/SHAM/CTBL multipalette property chunks as ILBM. Note: This is not the same as NetPBM.
 
 RGBN:
 RGB format with N planes (true-color with separate RGB channels). N indicates the number of bits per channel.
@@ -169,7 +172,7 @@ iff2png automatically selects the optimal PNG encoding based on the source image
 Color Types:
 ? Grayscale - For 1-bit and grayscale indexed images
 ? Palette - For indexed color images (optimized bit depth)
-? RGB - For true-color images (HAM, EHB, RGBN, RGB8, DEEP, 24-bit ILBM)
+? RGB - For true-colour images (HAM, EHB, RGBN, RGB8, DEEP, 24-bit ILBM) and for indexed ILBM/PBM that use PCHG/SHAM/CTBL
 ? RGBA - For images with alpha channel or transparency
 
 Bit Depths:
@@ -347,7 +350,19 @@ CloseIFFPicture():
 Closes the IFF context. Does not close the file handle (caller responsibility).
 
 ParseIFFPicture():
-Parses the IFF file structure and reads property chunks (BMHD, CMAP, CAMG, etc.).
+Parses the IFF file structure and reads property chunks (BMHD, CMAP, CAMG, etc.). For ILBM, PBM, and ACBM, multipalette chunks (PCHG, SHAM, CTBL) are loaded when present.
+
+GetImageInfo():
+Returns width, height, flags, and multipaletteChunkId (same meaning as GetMultipaletteChunkId()).
+
+GetMultipaletteChunkId():
+Returns MAKE_ID('S','H','A','M'), MAKE_ID('P','C','H','G'), MAKE_ID('C','T','B','L'), or 0 after load.
+
+IsMultipaletteActive():
+TRUE if a multipalette chunk is driving decode.
+
+GetPaletteIndices():
+After Decode(), library-owned width*height index buffer or NULL.
 
 DecodeToRGB():
 Decodes the IFF image and converts it to RGB format. Allocates RGB buffer.
@@ -498,6 +513,12 @@ Convert IFF images to PNG format
 History of changes and improvements in iff2png.
 
 @{"Main Index" LINK "main"}
+
+Version 1.6 (5.4.2026):
+? Public multipalette queries: GetMultipaletteChunkId(), IsMultipaletteActive(), GetPaletteIndices()
+? IFFImageInfo.multipaletteChunkId field
+? Verbose IFF chunk catalog and multipalette summary in iff2png output
+? SDK doc and AmigaGuide updated for the above
 
 Version 1.3 (21.12.2025):
 ? Initial release

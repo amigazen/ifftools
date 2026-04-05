@@ -10,7 +10,7 @@
 
 /* Amiga version strings - kept as static to prevent "unreachable" warnings */
 /* These are referenced by the linker/loader, not by code */
-static const char *verstag = "$VER: iff2png 1.6 (5/4/2026) PCHG pre-scanline";
+static const char *verstag = "$VER: iff2png 1.6 (5/4/2026)";
 static const char *stack_cookie = "$STACK: 4096";
 long oslibversion  = 40L; 
 
@@ -339,10 +339,18 @@ static VOID PrintIFFChunkCatalog(const char *path, ULONG fileSize, struct IFFPic
     }
     Close(fh);
     if (picture) {
-        SNPrintf((STRPTR)obuf, obufsz,
-            "  Library multipalette: SHAM loaded=%s  PCHG payload loaded=%s\n",
-            IFFPicture_HasSHAMData(picture) ? "yes" : "no",
-            IFFPicture_HasPCHGData(picture) ? "yes" : "no");
+        ULONG mpid;
+        char mids[8];
+
+        mpid = GetMultipaletteChunkId(picture);
+        if (mpid != 0UL) {
+            cat_fmt_id(mpid, mids);
+            SNPrintf((STRPTR)obuf, obufsz,
+                "  Library multipalette: %.4s\n", mids);
+        } else {
+            SNPrintf((STRPTR)obuf, obufsz,
+                "  Library multipalette: (none)\n");
+        }
         PutStr((STRPTR)obuf);
     }
 }
