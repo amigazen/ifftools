@@ -2,7 +2,7 @@
   Uploader:     toolkit@amigazen.com
   Author:       amigazen project
   Type:         gfx/conv
-  Version:      1.4
+  Version:      1.6
   Architecture: m68k-amigaos >= 3.1
   Distribution: Aminet
   Replaces:     /gfx/conv/iff2png.lha
@@ -15,6 +15,7 @@
   Features:
   - Supports all major IFF formats (ILBM, PBM, RGBN, RGB8, DEEP, YUVN, ACBM, FAXX)
   - Additionally supports VideoToaster's proprietary Framestore ILBM format
+  - Additional handles multipalette images
   - Handles 24-bit ILBM (deep ILBM with true-color RGB)
   - Automatic optimal PNG encoding based on source image properties
   - Preserves transparency and alpha channels
@@ -22,6 +23,8 @@
   - Preserves metadata (copyright, author, annotations) unless stripped
 
   Version History
+  - 1.6: Added support for SHAM, CTBL and PCHG multipalette images and 
+         increased IFF Picture metadata analysis to command output
   - 1.5: Added VideoToaster Framestore, a non-standard type of ILBM 
          and additional metadata elements including IFF sub-type
   - 1.4: Added YUVN, fixed major issues in DEEP support, optimised bitplane extraction algorithms

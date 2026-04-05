@@ -939,8 +939,110 @@ static LONG PrepareBodyDecodeBufferColumnWise(struct IFFPicture *picture)
 }
 
 /*
-** ReadBodyRow - Read one row of BODY data (for ILBM). Uses bodyDecodeBuffer when set (compression 2),
-** else ByteRun1 or raw read. Returns: number of bytes read, or -1 on error.
+** PrepareBodyDecodeBufferRowMajor - For ILBM compression 1 (standard ByteRun1): read the full BODY
+** chunk into memory, then expand PackBits with UnpackByteRun1Exact for each (row, plane) rowBytes
+** slice into one row-major buffer (same layout as sequential ReadBodyRow). This avoids relying on
+** the IFF handle's incremental read position across many small reads, which can diverge from a
+** single-buffer unpack on some iffparse/DOS stream combinations; reference decoders read the chunk
+** once then decompress (matches iff_png_compare.py and picture.datatype-style behaviour).
+*/
+static LONG PrepareBodyDecodeBufferRowMajor(struct IFFPicture *picture)
+{
+    UWORD width, height, depth, rowBytes;
+    ULONG nPlanes;
+    ULONG rawSize;
+    UBYTE *bodyBuf;
+    UBYTE *rowMajorBuf;
+    ULONG inPos;
+    LONG consumed;
+    UWORD y, p;
+    struct ContextNode *cn;
+    ULONG remaining;
+    ULONG cnSize;
+    UBYTE *rowDest;
+
+    width = picture->bmhd->w;
+    height = picture->bmhd->h;
+    depth = picture->bmhd->nPlanes;
+    rowBytes = RowBytes(width);
+    nPlanes = (ULONG)depth;
+    if (picture->bmhd->masking == mskHasMask) {
+        nPlanes++;
+    }
+    rawSize = (ULONG)rowBytes * nPlanes * (ULONG)height;
+
+    cn = CurrentChunk(picture->iff);
+    if (!cn || cn->cn_ID != ID_BODY || cn->cn_Size == 0) {
+        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Expected BODY for row-major ByteRun1 preload");
+        return RETURN_FAIL;
+    }
+    cnSize = (ULONG)cn->cn_Size;
+
+    if (picture->bodyDecodeBuffer) {
+        FreeMem(picture->bodyDecodeBuffer, picture->bodyDecodeSize);
+        picture->bodyDecodeBuffer = NULL;
+        picture->bodyDecodeOffset = 0;
+        picture->bodyDecodeSize = 0;
+    }
+
+    bodyBuf = (UBYTE *)AllocMem(cnSize, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!bodyBuf) {
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate BODY buffer for ByteRun1 preload");
+        return RETURN_FAIL;
+    }
+    if (ReadChunkBytes(picture->iff, bodyBuf, (LONG)cnSize) != (LONG)cnSize) {
+        FreeMem(bodyBuf, cnSize);
+        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read BODY for ByteRun1 preload");
+        return RETURN_FAIL;
+    }
+
+    rowMajorBuf = (UBYTE *)AllocMem(rawSize, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!rowMajorBuf) {
+        FreeMem(bodyBuf, cnSize);
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate decode buffer for ByteRun1 preload");
+        return RETURN_FAIL;
+    }
+
+    inPos = 0;
+    for (y = 0; y < height; y++) {
+        for (p = 0; p < (UWORD)nPlanes; p++) {
+            if (inPos > cnSize) {
+                FreeMem(rowMajorBuf, rawSize);
+                FreeMem(bodyBuf, cnSize);
+                SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 preload overran BODY");
+                return RETURN_FAIL;
+            }
+            remaining = cnSize - inPos;
+            rowDest = rowMajorBuf + (((ULONG)y * nPlanes) + (ULONG)p) * (ULONG)rowBytes;
+            consumed = UnpackByteRun1Exact(bodyBuf + inPos, remaining, rowDest, (ULONG)rowBytes);
+            if (consumed < 0) {
+                FreeMem(rowMajorBuf, rawSize);
+                FreeMem(bodyBuf, cnSize);
+                SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 plane row decode failed in preload");
+                return RETURN_FAIL;
+            }
+            inPos += (ULONG)consumed;
+        }
+    }
+
+    FreeMem(bodyBuf, cnSize);
+
+    if (inPos != cnSize) {
+        FreeMem(rowMajorBuf, rawSize);
+        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 preload size mismatch");
+        return RETURN_FAIL;
+    }
+
+    picture->bodyDecodeBuffer = rowMajorBuf;
+    picture->bodyDecodeOffset = 0;
+    picture->bodyDecodeSize = rawSize;
+    return RETURN_OK;
+}
+
+/*
+** ReadBodyRow - Read one row of BODY data (for ILBM). Uses bodyDecodeBuffer when set
+** (compression 2 column-wise preload or compression 1 row-major preload), else streaming
+** ByteRun1 from the IFF handle or raw chunk read. Returns: bytes read, or -1 on error.
 */
 static LONG ReadBodyRow(struct IFFPicture *picture, UBYTE *dest, ULONG rowBytes)
 {
@@ -1190,6 +1292,13 @@ LONG DecodeILBM(struct IFFPicture *picture)
     ULONG maxColors;
     UBYTE *alphaValues; /* For mask plane alpha channel */
     BOOL is24Bit; /* TRUE if 24-bit ILBM (direct RGB) */
+    UBYTE *workPal; /* 256*3 working palette for SHAM/PCHG/CTBL */
+    BOOL mpalOn;
+    struct IFFMultipaletteState mpst;
+    const UBYTE *palSrc;
+    
+    workPal = NULL;
+    mpalOn = FALSE;
     
     if (!picture || !picture->bmhd) {
         SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing BMHD for ILBM decoding");
@@ -1220,6 +1329,19 @@ LONG DecodeILBM(struct IFFPicture *picture)
     DEBUG_PRINTF4("DEBUG: DecodeILBM - Starting decode: %ldx%ld, %ld planes, masking=%ld\n",
                   width, height, depth, picture->bmhd->masking);
     rowBytes = RowBytes(width);
+    
+    /* Decode() always pre-allocates w*h*3 RGB; ILBM re-allocates here (RGB or RGBA by masking).
+     * Drop the parent buffer so we do not leak and so pixelDataSize matches this decode. */
+    if (picture->paletteIndices) {
+        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+        picture->paletteIndices = NULL;
+        picture->paletteIndicesSize = 0;
+    }
+    if (picture->pixelData) {
+        FreeMem(picture->pixelData, picture->pixelDataSize);
+        picture->pixelData = NULL;
+        picture->pixelDataSize = 0;
+    }
     
     /* Allocate pixel data buffer */
     if (picture->bmhd->masking == mskHasMask) {
@@ -1289,6 +1411,45 @@ LONG DecodeILBM(struct IFFPicture *picture)
             }
             FreeMem(picture->pixelData, picture->pixelDataSize);
             return RETURN_FAIL;
+        }
+    }
+    
+    /* ILBM compression 1 (ByteRun1): pre-decode BODY from one buffer (see PrepareBodyDecodeBufferRowMajor). */
+    if (picture->bmhd->compression == cmpByteRun1) {
+        if (PrepareBodyDecodeBufferRowMajor(picture) != RETURN_OK) {
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
+            FreeMem(planeBuffer, rowBytes);
+            if (picture->paletteIndices) {
+                FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+            }
+            FreeMem(picture->pixelData, picture->pixelDataSize);
+            return RETURN_FAIL;
+        }
+    }
+    
+    if (!is24Bit) {
+        mpalOn = IFFMultipalette_Active(picture);
+        if (mpalOn) {
+            workPal = (UBYTE *)AllocMem(768, MEMF_PUBLIC | MEMF_CLEAR);
+            if (!workPal) {
+                if (alphaValues) {
+                    FreeMem(alphaValues, width);
+                }
+                FreeMem(planeBuffer, rowBytes);
+                if (picture->paletteIndices) {
+                    FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                    picture->paletteIndices = NULL;
+                    picture->paletteIndicesSize = 0;
+                }
+                FreeMem(picture->pixelData, picture->pixelDataSize);
+                picture->pixelData = NULL;
+                picture->pixelDataSize = 0;
+                SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate multipalette buffer");
+                return RETURN_FAIL;
+            }
+            IFFMultipalette_Init(picture, workPal, &mpst);
         }
     }
     
@@ -1401,10 +1562,31 @@ LONG DecodeILBM(struct IFFPicture *picture)
             /* Clear pixel indices for this row */
             UBYTE *pixelIndices = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
             if (!pixelIndices) {
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
                 FreeMem(planeBuffer, rowBytes);
                 if (alphaValues) FreeMem(alphaValues, width);
+                if (picture->paletteIndices) {
+                    FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                    picture->paletteIndices = NULL;
+                    picture->paletteIndicesSize = 0;
+                }
+                FreeMem(picture->pixelData, picture->pixelDataSize);
+                picture->pixelData = NULL;
+                picture->pixelDataSize = 0;
                 SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate pixel indices");
                 return RETURN_FAIL;
+            }
+            
+            /* PCHG/SHAM/CTBL: apply this scanline's palette updates before reading BODY bits
+             * for the same row (matches picture.datatype / iff_png_compare.py; applying after
+             * planes would use the previous line's colours and breaks PCHGLib14-style ILBMs). */
+            if (mpalOn) {
+                IFFMultipalette_ApplyScanline(&mpst, row, workPal);
+                palSrc = workPal;
+            } else {
+                palSrc = cmapData;
             }
             
             /* Read all data planes for this row (planes 0 through nPlanes-1) */
@@ -1412,8 +1594,19 @@ LONG DecodeILBM(struct IFFPicture *picture)
                 bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
                 if (bytesRead != (LONG)rowBytes) {
                     FreeMem(pixelIndices, width);
+                    if (workPal) {
+                        FreeMem(workPal, 768);
+                    }
                     FreeMem(planeBuffer, rowBytes);
                     if (alphaValues) FreeMem(alphaValues, width);
+                    if (picture->paletteIndices) {
+                        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                        picture->paletteIndices = NULL;
+                        picture->paletteIndicesSize = 0;
+                    }
+                    FreeMem(picture->pixelData, picture->pixelDataSize);
+                    picture->pixelData = NULL;
+                    picture->pixelDataSize = 0;
                     SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
                     return RETURN_FAIL;
                 }
@@ -1426,8 +1619,19 @@ LONG DecodeILBM(struct IFFPicture *picture)
                 bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
                 if (bytesRead != (LONG)rowBytes) {
                     FreeMem(pixelIndices, width);
+                    if (workPal) {
+                        FreeMem(workPal, 768);
+                    }
                     FreeMem(planeBuffer, rowBytes);
                     FreeMem(alphaValues, width);
+                    if (picture->paletteIndices) {
+                        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                        picture->paletteIndices = NULL;
+                        picture->paletteIndicesSize = 0;
+                    }
+                    FreeMem(picture->pixelData, picture->pixelDataSize);
+                    picture->pixelData = NULL;
+                    picture->pixelDataSize = 0;
                     SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read mask plane");
                     return RETURN_FAIL;
                 }
@@ -1449,13 +1653,13 @@ LONG DecodeILBM(struct IFFPicture *picture)
                     *paletteOut++ = pixelIndex;
                 }
                 
-                /* Look up RGB from CMAP */
-                rgbOut[0] = cmapData[pixelIndex * 3];     /* R */
-                rgbOut[1] = cmapData[pixelIndex * 3 + 1]; /* G */
-                rgbOut[2] = cmapData[pixelIndex * 3 + 2]; /* B */
+                /* Look up RGB from CMAP or per-scanline palette */
+                rgbOut[0] = palSrc[pixelIndex * 3];     /* R */
+                rgbOut[1] = palSrc[pixelIndex * 3 + 1]; /* G */
+                rgbOut[2] = palSrc[pixelIndex * 3 + 2]; /* B */
                 
                 /* Handle 4-bit palette scaling if needed */
-                if (picture->cmap && picture->cmap->is4Bit) {
+                if (picture->cmap && picture->cmap->is4Bit && !mpalOn) {
                     rgbOut[0] |= (rgbOut[0] >> 4);
                     rgbOut[1] |= (rgbOut[1] >> 4);
                     rgbOut[2] |= (rgbOut[2] >> 4);
@@ -1477,6 +1681,9 @@ LONG DecodeILBM(struct IFFPicture *picture)
     FreeMem(planeBuffer, rowBytes);
     if (alphaValues) {
         FreeMem(alphaValues, width);
+    }
+    if (workPal) {
+        FreeMem(workPal, 768);
     }
     
     return RETURN_OK;
@@ -1510,6 +1717,14 @@ LONG DecodeHAM(struct IFFPicture *picture)
     UBYTE *cmapData;
     ULONG maxColors;
     UBYTE r, g, b;
+    UBYTE *workPal;
+    BOOL mpalOn;
+    struct IFFMultipaletteState mpst;
+    const UBYTE *hamPal;
+    
+    workPal = NULL;
+    mpalOn = FALSE;
+    hamPal = NULL;
     
     if (!picture || !picture->bmhd) {
         SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing BMHD for HAM decoding");
@@ -1555,6 +1770,24 @@ LONG DecodeHAM(struct IFFPicture *picture)
         }
     }
     
+    if (picture->bmhd->compression == cmpByteRun1) {
+        if (PrepareBodyDecodeBufferRowMajor(picture) != RETURN_OK) {
+            FreeMem(planeBuffer, rowBytes);
+            return RETURN_FAIL;
+        }
+    }
+    
+    if (IFFMultipalette_Active(picture)) {
+        workPal = (UBYTE *)AllocMem(768, MEMF_PUBLIC | MEMF_CLEAR);
+        if (!workPal) {
+            FreeMem(planeBuffer, rowBytes);
+            SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate multipalette buffer");
+            return RETURN_FAIL;
+        }
+        IFFMultipalette_Init(picture, workPal, &mpst);
+        mpalOn = TRUE;
+    }
+    
     rgbOut = picture->pixelData;
     
     /* Process each row */
@@ -1562,9 +1795,20 @@ LONG DecodeHAM(struct IFFPicture *picture)
         /* Clear pixel values for this row */
         UBYTE *pixelValues = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
         if (!pixelValues) {
+            if (workPal) {
+                FreeMem(workPal, 768);
+            }
             FreeMem(planeBuffer, rowBytes);
             SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate pixel values");
             return RETURN_FAIL;
+        }
+        
+        /* Multipalette: update working palette for this row before reading its bitplanes. */
+        if (mpalOn) {
+            IFFMultipalette_ApplyScanline(&mpst, row, workPal);
+            hamPal = workPal;
+        } else {
+            hamPal = cmapData;
         }
         
         /* Read all planes for this row */
@@ -1572,6 +1816,9 @@ LONG DecodeHAM(struct IFFPicture *picture)
             bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
             if (bytesRead != (LONG)rowBytes) {
                 FreeMem(pixelValues, width);
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
                 FreeMem(planeBuffer, rowBytes);
                 SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
                 return RETURN_FAIL;
@@ -1590,13 +1837,13 @@ LONG DecodeHAM(struct IFFPicture *picture)
             switch (hamCode) {
                 case HAMCODE_CMAP:
                     /* Look up color from CMAP */
-                    if (cmapData && hamIndex < maxColors) {
-                        r = cmapData[hamIndex * 3];
-                        g = cmapData[hamIndex * 3 + 1];
-                        b = cmapData[hamIndex * 3 + 2];
+                    if (hamPal && hamIndex < maxColors) {
+                        r = hamPal[hamIndex * 3];
+                        g = hamPal[hamIndex * 3 + 1];
+                        b = hamPal[hamIndex * 3 + 2];
                         
                         /* Handle 4-bit palette scaling */
-                        if (picture->cmap && picture->cmap->is4Bit) {
+                        if (picture->cmap && picture->cmap->is4Bit && !mpalOn) {
                             r |= (r >> 4);
                             g |= (g >> 4);
                             b |= (b >> 4);
@@ -1634,6 +1881,9 @@ LONG DecodeHAM(struct IFFPicture *picture)
     }
     
     FreeMem(planeBuffer, rowBytes);
+    if (workPal) {
+        FreeMem(workPal, 768);
+    }
     return RETURN_OK;
 }
 
@@ -1658,6 +1908,13 @@ LONG DecodeEHB(struct IFFPicture *picture)
     LONG bytesRead;
     UBYTE *cmapData;
     ULONG maxColors;
+    UBYTE *workPal;
+    BOOL mpalOn;
+    struct IFFMultipaletteState mpst;
+    const UBYTE *palSrc;
+    
+    workPal = NULL;
+    mpalOn = FALSE;
     
     if (!picture || !picture->bmhd || !picture->cmap || !picture->cmap->data) {
         SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing BMHD or CMAP for EHB decoding");
@@ -1692,6 +1949,24 @@ LONG DecodeEHB(struct IFFPicture *picture)
         }
     }
     
+    if (picture->bmhd->compression == cmpByteRun1) {
+        if (PrepareBodyDecodeBufferRowMajor(picture) != RETURN_OK) {
+            FreeMem(planeBuffer, rowBytes);
+            return RETURN_FAIL;
+        }
+    }
+    
+    if (IFFMultipalette_Active(picture)) {
+        workPal = (UBYTE *)AllocMem(768, MEMF_PUBLIC | MEMF_CLEAR);
+        if (!workPal) {
+            FreeMem(planeBuffer, rowBytes);
+            SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate multipalette buffer");
+            return RETURN_FAIL;
+        }
+        IFFMultipalette_Init(picture, workPal, &mpst);
+        mpalOn = TRUE;
+    }
+    
     rgbOut = picture->pixelData;
     
     /* Process each row */
@@ -1699,9 +1974,19 @@ LONG DecodeEHB(struct IFFPicture *picture)
         /* Clear pixel indices for this row */
         UBYTE *pixelIndices = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
         if (!pixelIndices) {
+            if (workPal) {
+                FreeMem(workPal, 768);
+            }
             FreeMem(planeBuffer, rowBytes);
             SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate pixel indices");
             return RETURN_FAIL;
+        }
+        
+        if (mpalOn) {
+            IFFMultipalette_ApplyScanline(&mpst, row, workPal);
+            palSrc = workPal;
+        } else {
+            palSrc = cmapData;
         }
         
         /* Read all planes for this row */
@@ -1709,6 +1994,9 @@ LONG DecodeEHB(struct IFFPicture *picture)
             bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
             if (bytesRead != (LONG)rowBytes) {
                 FreeMem(pixelIndices, width);
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
                 FreeMem(planeBuffer, rowBytes);
                 SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
                 return RETURN_FAIL;
@@ -1727,12 +2015,12 @@ LONG DecodeEHB(struct IFFPicture *picture)
             }
             
             /* Look up RGB from CMAP */
-            rgbOut[0] = cmapData[pixelIndex * 3];
-            rgbOut[1] = cmapData[pixelIndex * 3 + 1];
-            rgbOut[2] = cmapData[pixelIndex * 3 + 2];
+            rgbOut[0] = palSrc[pixelIndex * 3];
+            rgbOut[1] = palSrc[pixelIndex * 3 + 1];
+            rgbOut[2] = palSrc[pixelIndex * 3 + 2];
             
             /* Handle 4-bit palette scaling if needed */
-            if (picture->cmap->is4Bit) {
+            if (picture->cmap->is4Bit && !mpalOn) {
                 rgbOut[0] |= (rgbOut[0] >> 4);
                 rgbOut[1] |= (rgbOut[1] >> 4);
                 rgbOut[2] |= (rgbOut[2] >> 4);
@@ -1752,6 +2040,9 @@ LONG DecodeEHB(struct IFFPicture *picture)
     }
     
     FreeMem(planeBuffer, rowBytes);
+    if (workPal) {
+        FreeMem(workPal, 768);
+    }
     return RETURN_OK;
 }
 
@@ -1973,6 +2264,18 @@ LONG DecodeDEEP(struct IFFPicture *picture)
         }
     }
     
+    /* Decode() pre-allocates RGB; DEEP may choose RGBA from DPEL. */
+    if (picture->paletteIndices) {
+        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+        picture->paletteIndices = NULL;
+        picture->paletteIndicesSize = 0;
+    }
+    if (picture->pixelData) {
+        FreeMem(picture->pixelData, picture->pixelDataSize);
+        picture->pixelData = NULL;
+        picture->pixelDataSize = 0;
+    }
+    
     /* Allocate pixel data buffer (RGB or RGBA) */
     if (hasAlpha) {
         picture->pixelDataSize = (ULONG)width * height * 4;
@@ -2158,6 +2461,13 @@ LONG DecodePBM(struct IFFPicture *picture)
     LONG bytesRead;
     UBYTE *cmapData;
     ULONG maxColors;
+    UBYTE *workPal;
+    BOOL mpalOn;
+    struct IFFMultipaletteState mpst;
+    const UBYTE *palSrc;
+    
+    workPal = NULL;
+    mpalOn = FALSE;
     
     if (!picture || !picture->bmhd) {
         SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing BMHD for PBM decoding");
@@ -2183,14 +2493,35 @@ LONG DecodePBM(struct IFFPicture *picture)
         return RETURN_FAIL;
     }
     
+    if (IFFMultipalette_Active(picture)) {
+        workPal = (UBYTE *)AllocMem(768, MEMF_PUBLIC | MEMF_CLEAR);
+        if (!workPal) {
+            FreeMem(rowBuffer, width);
+            SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate multipalette buffer");
+            return RETURN_FAIL;
+        }
+        IFFMultipalette_Init(picture, workPal, &mpst);
+        mpalOn = TRUE;
+    }
+    
     rgbOut = picture->pixelData;
     
     /* Process each row */
     for (row = 0; row < height; row++) {
+        if (mpalOn) {
+            IFFMultipalette_ApplyScanline(&mpst, row, workPal);
+            palSrc = workPal;
+        } else {
+            palSrc = cmapData;
+        }
+        
         /* Read/decompress row data */
         if (picture->bmhd->compression == cmpByteRun1) {
             bytesRead = DecompressByteRun1(picture->iff, rowBuffer, width);
             if (bytesRead != width) {
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
                 FreeMem(rowBuffer, width);
                 SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed");
                 return RETURN_FAIL;
@@ -2199,6 +2530,9 @@ LONG DecodePBM(struct IFFPicture *picture)
             /* Uncompressed */
             bytesRead = ReadChunkBytes(picture->iff, rowBuffer, width);
             if (bytesRead != width) {
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
                 FreeMem(rowBuffer, width);
                 SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read row data");
                 return RETURN_FAIL;
@@ -2215,12 +2549,12 @@ LONG DecodePBM(struct IFFPicture *picture)
             }
             
             /* Look up RGB from CMAP */
-            rgbOut[0] = cmapData[pixelIndex * 3];     /* R */
-            rgbOut[1] = cmapData[pixelIndex * 3 + 1]; /* G */
-            rgbOut[2] = cmapData[pixelIndex * 3 + 2]; /* B */
+            rgbOut[0] = palSrc[pixelIndex * 3];     /* R */
+            rgbOut[1] = palSrc[pixelIndex * 3 + 1]; /* G */
+            rgbOut[2] = palSrc[pixelIndex * 3 + 2]; /* B */
             
             /* Handle 4-bit palette scaling if needed */
-            if (picture->cmap->is4Bit) {
+            if (picture->cmap->is4Bit && !mpalOn) {
                 rgbOut[0] |= (rgbOut[0] >> 4);
                 rgbOut[1] |= (rgbOut[1] >> 4);
                 rgbOut[2] |= (rgbOut[2] >> 4);
@@ -2231,6 +2565,9 @@ LONG DecodePBM(struct IFFPicture *picture)
     }
     
     FreeMem(rowBuffer, width);
+    if (workPal) {
+        FreeMem(workPal, 768);
+    }
     return RETURN_OK;
 }
 

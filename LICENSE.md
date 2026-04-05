@@ -1,6 +1,6 @@
 # BSD-2 License
 
-Copyright (c) 2025 amigazen project
+Copyright (c) 2026 amigazen project
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

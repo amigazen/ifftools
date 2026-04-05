@@ -10,9 +10,342 @@
 
 /* Amiga version strings - kept as static to prevent "unreachable" warnings */
 /* These are referenced by the linker/loader, not by code */
-static const char *verstag = "$VER: iff2png 1.5 (6/3/2026)";
+static const char *verstag = "$VER: iff2png 1.6 (5/4/2026) PCHG pre-scanline";
 static const char *stack_cookie = "$STACK: 4096";
 long oslibversion  = 40L; 
+
+/*
+** Raw IFF scan: list top-level chunks inside FORM (file order), sizes, and short summaries.
+** Uses the source path (re-opened) so it works after CloseIFFPicture; does not fail conversion.
+*/
+static ULONG cat_rdbe32(const UBYTE *p)
+{
+    return ((ULONG)p[0] << 24) | ((ULONG)p[1] << 16) | ((ULONG)p[2] << 8) | (ULONG)p[3];
+}
+
+static UWORD cat_rdbe16(const UBYTE *p)
+{
+    return (UWORD)(((UWORD)p[0] << 8) | (UWORD)p[1]);
+}
+
+static VOID cat_fmt_id(ULONG id, char *o)
+{
+    ULONG i;
+    UBYTE c;
+    for (i = 0; i < 4; i++) {
+        c = (UBYTE)(id >> (24 - (i * 8)));
+        if (c < 32 || c > 126) {
+            o[i] = '.';
+        } else {
+            o[i] = (char)c;
+        }
+    }
+    o[4] = '\0';
+}
+
+static VOID cat_summarize_chunk(ULONG cid, ULONG csize, const UBYTE *d, ULONG dlen,
+    struct BitMapHeader *bm, char *sum, ULONG sumsiz)
+{
+    UWORD uw;
+    UWORD uh;
+    ULONG cm;
+    ULONG hdrcomp;
+    ULONG flags;
+    LONG startl;
+    UWORD rawsl;
+    ULONG lc;
+    ULONG chg;
+    ULONG totalc;
+    ULONG ncol;
+    ULONG i;
+    UBYTE c;
+    char tmp[132];
+    ULONG n;
+    ULONG w;
+
+    sum[0] = '\0';
+    if (cid == MAKE_ID('B','M','H','D')) {
+        /* Prefer the iffparse-loaded BMHD (same as decoder); raw disk slice can disagree
+         * if the read offset/length ever diverges from chunk boundaries on some media. */
+        if (bm != NULL) {
+            SNPrintf((STRPTR)sum, sumsiz,
+                "bitmap header w=%lu h=%lu planes=%u mask=%u comp=%u (loaded)",
+                (ULONG)bm->w, (ULONG)bm->h,
+                (unsigned int)bm->nPlanes, (unsigned int)bm->masking, (unsigned int)bm->compression);
+            if (csize >= 20UL && dlen >= 20UL) {
+                if ((ULONG)bm->w != (ULONG)cat_rdbe16(d) || (ULONG)bm->h != (ULONG)cat_rdbe16(d + 2) ||
+                    (ULONG)bm->nPlanes != (ULONG)d[8] || (ULONG)bm->masking != (ULONG)d[9] ||
+                    (ULONG)bm->compression != (ULONG)d[10]) {
+                    SNPrintf((STRPTR)sum, sumsiz,
+                        "bitmap header w=%lu h=%lu planes=%u mask=%u comp=%u (loaded; raw chunk differs)",
+                        (ULONG)bm->w, (ULONG)bm->h,
+                        (unsigned int)bm->nPlanes, (unsigned int)bm->masking, (unsigned int)bm->compression);
+                }
+            }
+        } else if (csize >= 20UL && dlen >= 20UL) {
+            uw = cat_rdbe16(d);
+            uh = cat_rdbe16(d + 2);
+            SNPrintf((STRPTR)sum, sumsiz,
+                "bitmap header w=%lu h=%lu planes=%u mask=%u comp=%u (raw file)",
+                (ULONG)uw, (ULONG)uh, (unsigned int)d[8], (unsigned int)d[9], (unsigned int)d[10]);
+        } else {
+            SNPrintf((STRPTR)sum, sumsiz, "BMHD truncated (%lu bytes)", csize);
+        }
+        return;
+    }
+    if (cid == MAKE_ID('C','A','M','G')) {
+        if (csize >= 4UL && dlen >= 4UL) {
+            cm = cat_rdbe32(d);
+            SNPrintf((STRPTR)sum, sumsiz,
+                "viewport modes 0x%08lx %s%s%s%s",
+                cm,
+                (cm & 0x8000UL) ? "HIRES " : "",
+                (cm & 0x0800UL) ? "HAM " : "",
+                (cm & 0x0080UL) ? "EHB " : "",
+                (cm & 0x0004UL) ? "LACE " : "");
+        }
+        return;
+    }
+    if (cid == MAKE_ID('C','M','A','P')) {
+        ncol = csize / 3UL;
+        SNPrintf((STRPTR)sum, sumsiz, "palette %lu RGB triples", ncol);
+        return;
+    }
+    if (cid == MAKE_ID('P','C','H','G')) {
+        if (csize >= 20UL && dlen >= 20UL) {
+            hdrcomp = (ULONG)cat_rdbe16(d);
+            flags = (ULONG)cat_rdbe16(d + 2);
+            rawsl = cat_rdbe16(d + 4);
+            startl = (LONG)(WORD)rawsl;
+            lc = (ULONG)cat_rdbe16(d + 6);
+            chg = (ULONG)cat_rdbe16(d + 8);
+            totalc = cat_rdbe32(d + 16);
+            SNPrintf((STRPTR)sum, sumsiz,
+                "line palette comp=%lu flags=0x%04lx startLine=%ld lineCount=%lu changedLines=%lu totalChanges=%lu",
+                hdrcomp, flags, startl, lc, chg, totalc);
+        } else {
+            SNPrintf((STRPTR)sum, sumsiz, "PCHG truncated (%lu bytes)", csize);
+        }
+        return;
+    }
+    if (cid == MAKE_ID('B','O','D','Y')) {
+        if (bm) {
+            if (bm->compression == 1) {
+                SNPrintf((STRPTR)sum, sumsiz, "plane data (BMHD comp=1 ByteRun1 per row)");
+            } else if (bm->compression == 2) {
+                SNPrintf((STRPTR)sum, sumsiz, "plane data (BMHD comp=2 ByteRun1 per column)");
+            } else if (bm->compression == 0) {
+                SNPrintf((STRPTR)sum, sumsiz, "plane data (BMHD comp=0 uncompressed)");
+            } else {
+                SNPrintf((STRPTR)sum, sumsiz, "plane data (BMHD comp=%u)", (unsigned int)bm->compression);
+            }
+        } else {
+            SNPrintf((STRPTR)sum, sumsiz, "bitmap/plane payload (see BMHD for layout)");
+        }
+        return;
+    }
+    if (cid == MAKE_ID('S','H','A','M')) {
+        SNPrintf((STRPTR)sum, sumsiz, "SHAM half-brite style line palette");
+        return;
+    }
+    if (cid == MAKE_ID('C','T','B','L')) {
+        SNPrintf((STRPTR)sum, sumsiz, "CTBL %lu RGB444 register pairs", csize / 2UL);
+        return;
+    }
+    if (cid == MAKE_ID('P','L','T','P')) {
+        SNPrintf((STRPTR)sum, sumsiz, "Video Toaster PLTP plane routing");
+        return;
+    }
+    if (cid == MAKE_ID('J','U','N','K')) {
+        SNPrintf((STRPTR)sum, sumsiz, "padding / unused");
+        return;
+    }
+    if (cid == MAKE_ID('G','R','A','B')) {
+        if (csize >= 4UL && dlen >= 4UL) {
+            SNPrintf((STRPTR)sum, sumsiz, "hotspot x=%ld y=%ld",
+                (LONG)(WORD)cat_rdbe16(d), (LONG)(WORD)cat_rdbe16(d + 2));
+        }
+        return;
+    }
+    if (cid == MAKE_ID('D','E','S','T')) {
+        if (csize >= 8UL && dlen >= 8UL) {
+            SNPrintf((STRPTR)sum, sumsiz, "merge depth=%lu picks=0x%04lx",
+                (ULONG)cat_rdbe16(d), (ULONG)cat_rdbe16(d + 2));
+        }
+        return;
+    }
+    if (cid == MAKE_ID('S','P','R','T')) {
+        if (csize >= 2UL && dlen >= 2UL) {
+            SNPrintf((STRPTR)sum, sumsiz, "sprite precedence %lu", (ULONG)cat_rdbe16(d));
+        }
+        return;
+    }
+    if (cid == MAKE_ID('C','R','N','G')) {
+        SNPrintf((STRPTR)sum, sumsiz, "color cycle / range data");
+        return;
+    }
+    if (cid == MAKE_ID('F','V','E','R')) {
+        if (dlen > 0UL) {
+            n = dlen;
+            if (n > 120UL) {
+                n = 120UL;
+            }
+            w = 0;
+            for (i = 0; i < n && w + 1 < sizeof(tmp); i++) {
+                c = d[i];
+                if (c < 32 || c > 126) {
+                    c = (UBYTE)'.';
+                }
+                tmp[w] = (char)c;
+                w++;
+            }
+            tmp[w] = '\0';
+            SNPrintf((STRPTR)sum, sumsiz, "version string: %s", tmp);
+        }
+        return;
+    }
+    if (cid == MAKE_ID('A','N','N','O') || cid == MAKE_ID('T','E','X','T') ||
+        cid == MAKE_ID('A','U','T','H') || cid == MAKE_ID('(','c',')',' ')) {
+        if (dlen > 0UL) {
+            n = dlen;
+            if (n > 120UL) {
+                n = 120UL;
+            }
+            w = 0;
+            for (i = 0; i < n && w + 1 < sizeof(tmp); i++) {
+                c = d[i];
+                if (c < 32 || c > 126) {
+                    c = (UBYTE)'.';
+                }
+                tmp[w] = (char)c;
+                w++;
+            }
+            tmp[w] = '\0';
+            SNPrintf((STRPTR)sum, sumsiz, "text: %s", tmp);
+        }
+        return;
+    }
+    if (cid == MAKE_ID('E','X','I','F') || cid == MAKE_ID('I','P','T','C') ||
+        cid == MAKE_ID('X','M','P','0') || cid == MAKE_ID('X','M','P','1') ||
+        cid == MAKE_ID('I','C','C','P') || cid == MAKE_ID('G','E','O','T') ||
+        cid == MAKE_ID('G','E','O','F')) {
+        SNPrintf((STRPTR)sum, sumsiz, "extended metadata blob");
+        return;
+    }
+    SNPrintf((STRPTR)sum, sumsiz, "binary payload");
+}
+
+static VOID PrintIFFChunkCatalog(const char *path, ULONG fileSize, struct IFFPicture *picture,
+    char *obuf, ULONG obufsz)
+{
+    BPTR fh;
+    UBYTE hdr[12];
+    UBYTE payload[512];
+    LONG nr;
+    ULONG formLen;
+    ULONG formType;
+    ULONG end;
+    ULONG pos;
+    ULONG nextPos;
+    ULONG chunkIdx;
+    ULONG chunkId;
+    ULONG chunkSize;
+    ULONG toRead;
+    ULONG prevPos;
+    ULONG zi;
+    struct BitMapHeader *bm;
+    char id4[8];
+    char sum[400];
+
+    bm = NULL;
+    if (picture) {
+        bm = GetBMHD(picture);
+    }
+    fh = Open((STRPTR)path, MODE_OLDFILE);
+    if (!fh) {
+        PutStr("  Chunk list: (could not re-open source file)\n");
+        return;
+    }
+    nr = Read(fh, hdr, 12L);
+    if (nr != 12L || hdr[0] != 'F' || hdr[1] != 'O' || hdr[2] != 'R' || hdr[3] != 'M') {
+        PutStr("  Chunk list: (not a top-level IFF FORM)\n");
+        Close(fh);
+        return;
+    }
+    formLen = cat_rdbe32(hdr + 4);
+    formType = cat_rdbe32(hdr + 8);
+    end = 8UL + formLen;
+    if (end < 12UL) {
+        PutStr("  Chunk list: (invalid FORM chunk size)\n");
+        Close(fh);
+        return;
+    }
+    if (end > fileSize) {
+        end = fileSize;
+    }
+    cat_fmt_id(formType, id4);
+    SNPrintf((STRPTR)obuf, obufsz, "  IFF chunks (FORM %.4s, %lu bytes in FORM):\n", id4, formLen);
+    PutStr((STRPTR)obuf);
+    chunkIdx = 0;
+    pos = 12UL;
+    prevPos = 0xFFFFFFFFUL;
+    while (pos + 8UL <= end && pos != prevPos) {
+        prevPos = pos;
+        if (Seek(fh, (LONG)pos, OFFSET_BEGINNING) == -1L) {
+            break;
+        }
+        nr = Read(fh, hdr, 8L);
+        if (nr != 8L) {
+            break;
+        }
+        chunkId = cat_rdbe32(hdr);
+        chunkSize = cat_rdbe32(hdr + 4);
+        chunkIdx++;
+        cat_fmt_id(chunkId, id4);
+        toRead = chunkSize;
+        if (toRead > (ULONG)sizeof(payload)) {
+            toRead = (ULONG)sizeof(payload);
+        }
+        for (zi = 0; zi < (ULONG)sizeof(payload); zi++) {
+            payload[zi] = 0;
+        }
+        if (chunkSize > 0UL) {
+            if (Seek(fh, (LONG)(pos + 8UL), OFFSET_BEGINNING) == -1L) {
+                break;
+            }
+            nr = Read(fh, payload, (LONG)toRead);
+            if (nr < 0) {
+                nr = 0;
+            }
+            if ((ULONG)nr < toRead) {
+                toRead = (ULONG)nr;
+            }
+        } else {
+            toRead = 0;
+        }
+        cat_summarize_chunk(chunkId, chunkSize, payload, toRead, bm, sum, (ULONG)sizeof(sum));
+        SNPrintf((STRPTR)obuf, obufsz, "    %lu. %.4s  %lu bytes  %s\n",
+            chunkIdx, id4, chunkSize, sum);
+        PutStr((STRPTR)obuf);
+        nextPos = pos + 8UL + chunkSize + (chunkSize & 1UL);
+        if (nextPos <= pos) {
+            break;
+        }
+        pos = nextPos;
+        if (chunkIdx > 4096UL) {
+            PutStr("    ... (truncated)\n");
+            break;
+        }
+    }
+    Close(fh);
+    if (picture) {
+        SNPrintf((STRPTR)obuf, obufsz,
+            "  Library multipalette: SHAM loaded=%s  PCHG payload loaded=%s\n",
+            IFFPicture_HasSHAMData(picture) ? "yes" : "no",
+            IFFPicture_HasPCHGData(picture) ? "yes" : "no");
+        PutStr((STRPTR)obuf);
+    }
+}
 
 /* Command-line template - two required positional file arguments and optional FORCE, QUIET, and OPAQUE switches */
 static const char TEMPLATE[] = "SOURCE/A,TARGET/A,FORCE/S,QUIET/S,OPAQUE/S,STRIP=NOMETADATA/S";
@@ -420,6 +753,9 @@ int main(int argc, char **argv)
                 PutStr((STRPTR)outputBuffer);
             }
         }
+        
+        PrintIFFChunkCatalog((const char *)sourceFile, sourceFileSize, picture,
+            (STRPTR)outputBuffer, (ULONG)sizeof(outputBuffer));
         
         /* File size */
         {

@@ -174,13 +174,35 @@ VOID FreeIFFPicture(struct IFFPicture *picture)
         picture->paletteIndicesSize = 0;
     }
     
-    /* Free ILBM compression-2 pre-decoded BODY buffer if used */
+    /* Free ILBM pre-decoded BODY buffer (ByteRun1 row-major or column-wise preload) if used */
     if (picture->bodyDecodeBuffer) {
         FreeMem(picture->bodyDecodeBuffer, picture->bodyDecodeSize);
         picture->bodyDecodeBuffer = NULL;
         picture->bodyDecodeOffset = 0;
         picture->bodyDecodeSize = 0;
     }
+    
+    /* Multipalette chunk copies */
+    if (picture->mpalShamAlloc) {
+        FreeMem(picture->mpalShamAlloc, picture->mpalShamAllocSize);
+        picture->mpalShamAlloc = NULL;
+        picture->mpalShamAllocSize = 0;
+    }
+    if (picture->mpalPchgAlloc) {
+        FreeMem(picture->mpalPchgAlloc, picture->mpalPchgAllocSize);
+        picture->mpalPchgAlloc = NULL;
+        picture->mpalPchgAllocSize = 0;
+    }
+    picture->mpalPchgPayload = NULL;
+    picture->mpalPchgPayloadSize = 0;
+    if (picture->mpalCtblData) {
+        FreeMem(picture->mpalCtblData, picture->mpalCtblSize);
+        picture->mpalCtblData = NULL;
+        picture->mpalCtblSize = 0;
+    }
+    picture->mpalSham = FALSE;
+    picture->mpalPchg = FALSE;
+    picture->mpalCtbl = FALSE;
     
     /* Free metadata structure if allocated */
     if (picture->metadata) {
@@ -497,6 +519,9 @@ LONG ParseIFFPicture(struct IFFPicture *picture)
         PropChunk(picture->iff, formType, ID_CMAP);
         PropChunk(picture->iff, formType, ID_CAMG);
         PropChunk(picture->iff, formType, ID_PLTP);  /* Optional: NewTek Video Toaster framestore */
+        PropChunk(picture->iff, formType, ID_PCHG);
+        PropChunk(picture->iff, formType, ID_SHAM);
+        PropChunk(picture->iff, formType, ID_CTBL);
         /* Metadata chunks (optional) - single instance */
         PropChunk(picture->iff, formType, ID_GRAB);
         PropChunk(picture->iff, formType, ID_DEST);
@@ -529,6 +554,9 @@ LONG ParseIFFPicture(struct IFFPicture *picture)
         }
         PropChunk(picture->iff, formType, ID_CMAP);
         PropChunk(picture->iff, formType, ID_CAMG);
+        PropChunk(picture->iff, formType, ID_PCHG);
+        PropChunk(picture->iff, formType, ID_SHAM);
+        PropChunk(picture->iff, formType, ID_CTBL);
         /* Extended metadata chunks - can appear in any FORM type */
         CollectionChunk(picture->iff, formType, ID_EXIF);
         CollectionChunk(picture->iff, formType, ID_IPTC);
@@ -736,6 +764,9 @@ LONG ParseIFFPicture(struct IFFPicture *picture)
         ReadCMAP(picture); /* CMAP is optional, don't fail if missing */
         ReadCAMG(picture); /* CAMG is optional, don't fail if missing */
         ReadPLTP(picture); /* PLTP optional: NewTek Video Toaster framestore */
+        if (ReadILBMMultipalette(picture) != RETURN_OK) {
+            return RETURN_FAIL;
+        }
         
         /* 24-bit ILBM (nPlanes == 24) is true-color, not indexed */
         if (formType == ID_ILBM && picture->bmhd && picture->bmhd->nPlanes == 24) {
@@ -949,6 +980,22 @@ BOOL IsCompressed(struct IFFPicture *picture)
         return FALSE;
     }
     return picture->isCompressed;
+}
+
+BOOL IFFPicture_HasPCHGData(struct IFFPicture *picture)
+{
+    if (!picture) {
+        return FALSE;
+    }
+    return (picture->mpalPchgPayload != NULL && picture->mpalPchgPayloadSize >= 4U) ? TRUE : FALSE;
+}
+
+BOOL IFFPicture_HasSHAMData(struct IFFPicture *picture)
+{
+    if (!picture) {
+        return FALSE;
+    }
+    return (picture->mpalSham && picture->mpalShamAlloc != NULL && picture->mpalShamAllocSize >= 34U) ? TRUE : FALSE;
 }
 
 /*
@@ -1282,7 +1329,6 @@ LONG ReadCMAP(struct IFFPicture *picture)
 LONG ReadCAMG(struct IFFPicture *picture)
 {
     struct StoredProperty *sp;
-    ULONG *mode;
     
     if (!picture || !picture->iff) {
         if (picture) {
@@ -1307,9 +1353,14 @@ LONG ReadCAMG(struct IFFPicture *picture)
         return RETURN_FAIL;
     }
     
-    /* Extract viewport modes */
-    mode = (ULONG *)sp->sp_Data;
-    picture->viewportmodes = *mode;
+    /* IFF stores CAMG big-endian; do not read via native ULONG* (wrong on little-endian). */
+    {
+        const UBYTE *src;
+        ULONG v;
+        src = (const UBYTE *)sp->sp_Data;
+        v = ((ULONG)src[0] << 24) | ((ULONG)src[1] << 16) | ((ULONG)src[2] << 8) | (ULONG)src[3];
+        picture->viewportmodes = v;
+    }
     
     DEBUG_PRINTF1("DEBUG: ReadCAMG - Viewport modes = 0x%08lx\n", picture->viewportmodes);
     

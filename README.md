@@ -84,13 +84,14 @@ iff2png source.iff target.png STRIP
 
 - **ILBM** (InterLeaved BitMap) - Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue), and ILBM compression type 2 - column-wise ByteRun1
 - **PBM** (Packed BitMap) - Similar to ILBM but with packed pixels (one byte per pixel) instead of bitplanes (N.B. this is not the same as NetPBM)
-- **RGBN** - RGB format with N planes (true-color with separate RGB channels).
-- **RGB8** - RGB 8-bit format (24-bit color, 32-bit with alpha).
-- **DEEP** - High bit-depth format for professional graphics.
+- **RGBN** - RGB format with N planes (true-color with separate RGB channels)
+- **RGB8** - RGB 8-bit format (24-bit color, 32-bit with alpha)
+- **DEEP** - High bit-depth format for professional graphics
 - **ACBM** (Amiga Continuous BitMap) - Format with separate alpha channel data in an ABIT chunk.
-- **YUVN** - YUV color space format for broadcast television (CCIR-601-2 standard). Stores luminance (Y) and color-difference signals (U, V) in separate chunks. Supports various YUV modes (400, 411, 422, 444, and lores variants). *Note: YUVN support is planned but not yet implemented.*
-- **FAXX** - Facsimile image format using ITU-T T.4 compression (Modified Huffman, Modified READ, Modified Modified READ).
+- **YUVN** - YUV color space format for broadcast television (CCIR-601-2 standard). Stores luminance (Y) and color-difference signals (U, V) in separate chunks. Supports various YUV modes (400, 411, 422, 444, and lores variants)
+- **FAXX** - Facsimile image format using ITU-T T.4 compression (Modified Huffman, Modified READ, Modified Modified READ)
 - **ILBM Framestore** - NewTek VideoToaster's Framestore proprietary extensions to ILBM
+- **Multipalette** - Support for SHAM, CTBL and PCHG multipalette IFF Picture files
 
 ### Output Information
 

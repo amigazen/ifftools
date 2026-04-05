@@ -16,9 +16,9 @@ Comprehensive reference for IFF bitmap picture format structure, encoding, and d
 @{"FAXX (Facsimile)" LINK "faxx"}
 @{"YUVN (YUV Broadcast)" LINK "yuvn"}
 @{"Video Toaster Framestore" LINK "framestore"}
+@{"Multipalette (PCHG, SHAM, CTBL)" LINK "multipalette"}
 @{"Compression Algorithms" LINK "compression"}
 @{"Metadata Chunks" LINK "metadata"}
-@{"References" LINK "refs"}
 @{"Index" LINK "index"}
 @ENDNODE
 
@@ -27,7 +27,7 @@ IFF Picture Formats
 
 IFF (Interchange File Format) is the standard container for multimedia on Amiga. Picture FORMs store raster images; each FORM type has a specific chunk layout and pixel encoding. This guide documents every IFF picture format in detail: chunk structures, byte layout, compression, and decoding algorithms.
 
-Sources: EA IFF 85, Commodore/Amiga revisions, example folder specs (ILBM, DEEP, RGB8, YUVN, FAXX), FramestoreDT Video Toaster spec, and iff2png IFFPicture library implementation.
+Sources: EA IFF 85, Commodore/Amiga revisions, IFF specs (ILBM, DEEP, RGB8, YUVN, FAXX), FramestoreDT Video Toaster spec, and IFFPicture library implementation.
 
 @{"Main" LINK "main"}
 @{"IFF Container basics" LINK "container"}
@@ -79,8 +79,11 @@ CRNG (colour cycling): WORD pad; WORD rate (16384 = 60 steps/sec); WORD flags (1
 
 DEST (merge): UBYTE depth; UBYTE pad; UWORD planePick (1=source plane), planeOnOff (default), planeMask (1=write). Low depth bits map to destination planes.
 
+Optional per-scanline palette chunks (PCHG, SHAM, CTBL): see @{"Multipalette (PCHG, SHAM, CTBL)" LINK "multipalette"}.
+
 Words per row = (w+15)/16. Mask plane stored like an extra plane if masking=1.
 @{"Main" LINK "main"}
+@{"Multipalette (PCHG, SHAM, CTBL)" LINK "multipalette"}
 @{"ByteRun1 compression" LINK "compression"}
 @{"Metadata chunks" LINK "metadata"}
 @ENDNODE
@@ -94,8 +97,11 @@ BMHD: Same as ILBM. nPlanes typically 8 (256 colours). masking and compression a
 
 BODY: For each scanline, width bytes of palette indices (one byte per pixel). No interleaving. If compression=1, each row is ByteRun1 compressed. Row length in bytes = width (uncompressed).
 
+PBM may carry the same optional multipalette property chunks as ILBM (@{"Multipalette" LINK "multipalette"}).
+
 PBM is not the same as NetPBM. Used for 8-bit chunky display on Amiga.
 @{"Main" LINK "main"}
+@{"Multipalette (PCHG, SHAM, CTBL)" LINK "multipalette"}
 @ENDNODE
 
 @NODE "rgbn" "RGBN and RGB8"
@@ -146,10 +152,13 @@ BMHD: Same as ILBM. masking is typically 0 or 1 (mask in ABIT).
 
 CMAP, CAMG, etc.: Same as ILBM.
 
+Writers may theoretically also place PCHG, SHAM, or CTBL in FORM ACBM (same property-chunk rules as ILBM), but combined ACBM+multipalette files are rare. IFFPicture stores these chunks when present; full per-line palette application is implemented for ILBM/PBM/HAM/EHB decode paths, not for ACBM decode.
+
 ABIT (instead of BODY): Alpha/mask plane data. Same row layout as one plane (word-aligned rows). If BMHD compression=1, each row of ABIT is ByteRun1 compressed. Size: height × ((width+15)/16)*2 bytes uncompressed.
 
 BODY in ACBM: Contains only the colour bitplanes (no interleaved mask). So BODY has nPlanes rows per scanline; ABIT has one row per scanline.
 @{"Main" LINK "main"}
+@{"Multipalette (PCHG, SHAM, CTBL)" LINK "multipalette"}
 @ENDNODE
 
 @NODE "faxx" "FAXX - Facsimile Image"
@@ -201,6 +210,28 @@ Chroma: diff = comp6 - comp7 (signed). Row sign: -1 for y mod 4 in {0,3}, +1 for
 @{"ILBM" LINK "ilbm"}
 @ENDNODE
 
+@NODE "multipalette" "Multipalette - PCHG, SHAM, CTBL"
+IFF Picture Formats
+
+These optional IFF property chunks describe palette changes per scanline (or static palette overrides). They are most often seen on FORM ILBM (especially HAM/SHAM workflows).
+
+SHAM ('SHAM'): Legacy "sliced HAM" chunk. First 2 bytes are UWORD 0 (big-endian); then for each displayed line (each two lines if interlace/LACE), 32 bytes = 16 registers × 2 bytes of 12-bit style nibbles (R in low nibble of byte 0, G high / B low of byte 1 per register in common loaders).
+
+PCHG ('PCHG'): Structured line mask + change records; may use Compression 0 (raw) or 1 (static Huffman after PCHGCompHeader). Header 20 bytes: Compression, Flags, StartLine (WORD), LineCount, ChangedLines, MinReg, MaxReg, MaxChanges, TotalChanges (see PCHG.guide). Flags select small (4-bit / 12-bit UWORD) vs big (24/32-bit per register) line payloads.
+
+CTBL ('CTBL') and DYCP ('DYCP'): Documented together as NewTek Dynamic HAM (e.g. Digiview IV)
+
+CTBL: array of big-endian UWORD, one per colour register, 12-bit 0RGB per word (as in that registry).
+
+DYCP: dynamic colour palette setup; chunk payload described there as 3 longwords (12 bytes) of file/setup data.
+
+IFFPicture: parses and stores PCHG (including Huffman decompress to raw line data), SHAM, and CTBL on ILBM, PBM, and ACBM parse paths. Per-line palette is applied when decoding to RGB for ILBM (indexed), PBM, HAM, and EHB. If both SHAM and PCHG are present, SHAM takes precedence (common Amiga loader behaviour). CTBL merges into the working palette after CMAP.
+
+@{"Main" LINK "main"}
+@{"ILBM" LINK "ilbm"}
+@{"ACBM" LINK "acbm"}
+@ENDNODE
+
 @NODE "compression" "Compression Algorithms"
 IFF Picture Formats
 
@@ -233,17 +264,13 @@ EXIF, IPTC, XMP0, XMP1, ICCP, ICCN, GEOT, GEOF: Extended metadata (binary or tex
 
 PLTP: 32 bytes, 16 × (component_id, bit_significance). Used in Video Toaster Framestore (ILBM 16-plane). Bytes 0-1 = plane 0, 2-3 = plane 1, ... 30-31 = plane 15.
 
+PCHG, SHAM, CTBL: multipalette / per-line colour (@{"Multipalette" LINK "multipalette"}).
+
 CMAP storage: R,G,B each 0-255. For 4-bit hardware store scaled (e.g. 0x11,0x77,0xFF for 1,7,15). Left-justified legacy: high nibble significant; scale when displaying on 8-bit.
 @{"Main" LINK "main"}
 @{"ILBM" LINK "ilbm"}
 @ENDNODE
 
-@NODE "refs" "References"
-IFF Picture Formats
-
-EA IFF 85; Commodore IFF docs (ILBM.rtf, EA IFF 85.rtf); example folder: ILBM.txt, DEEP.txt, RGB8.txt, yuvn.txt, faxx.txt; Video Toaster Framestore: FramestoreDT/VideoToaster_Framestore_Format_Specification.md; iff2png IFFPicture library (iffpicturelib).
-@{"Main" LINK "main"}
-@ENDNODE
 
 @NODE "index" "Index"
 IFF Picture Formats
@@ -251,7 +278,6 @@ IFF Picture Formats
 Quick index.
 
 @{"Main" LINK "main"}
-@{"References" LINK "refs"}
 
 Formats:
 @{"ILBM" LINK "ilbm"}
@@ -262,6 +288,7 @@ Formats:
 @{"FAXX" LINK "faxx"}
 @{"YUVN" LINK "yuvn"}
 @{"Video Toaster Framestore" LINK "framestore"}
+@{"Multipalette (PCHG, SHAM, CTBL)" LINK "multipalette"}
 
 Reference:
 @{"IFF Container" LINK "container"}

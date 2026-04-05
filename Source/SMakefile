@@ -16,8 +16,9 @@ AIFF2AIFF_OBJS = iff2aiff.o aiff_encoder.o
 
 # Library objects
 LIB_OBJS = iffpicturelib/iffpicture.o iffpicturelib/image_decoder.o \
-           iffpicturelib/image_analyzer.o iffpicturelib/bitmap_renderer.o \
-           iffpicturelib/metadata_reader.o iffpicturelib/utils.o
+           iffpicturelib/pchg_palette.o iffpicturelib/image_analyzer.o \
+           iffpicturelib/bitmap_renderer.o iffpicturelib/metadata_reader.o \
+           iffpicturelib/utils.o
 
 # Uncomment the next line to enable debug output:
 # DEBUG_FLAG = DEFINE=DEBUG
@@ -94,6 +95,9 @@ iffpicturelib/iffpicture.o: iffpicturelib/iffpicture.c iffpicturelib/iffpicture.
 
 iffpicturelib/image_decoder.o: iffpicturelib/image_decoder.c iffpicturelib/iffpicture_private.h
 	sc $(CFLAGS) OBJNAME=$@ iffpicturelib/image_decoder.c
+
+iffpicturelib/pchg_palette.o: iffpicturelib/pchg_palette.c iffpicturelib/iffpicture_private.h
+	sc $(CFLAGS) OBJNAME=$@ iffpicturelib/pchg_palette.c
 
 iffpicturelib/image_analyzer.o: iffpicturelib/image_analyzer.c iffpicturelib/iffpicture_private.h
 	sc $(CFLAGS) OBJNAME=$@ iffpicturelib/image_analyzer.c

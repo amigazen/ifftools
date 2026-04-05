@@ -199,6 +199,24 @@ LONG GetOptimalPNGConfig(struct IFFPicture *picture, struct PNGConfig *config, B
         return RETURN_FAIL;
     }
     
+    /* SHAM/PCHG/CTBL: decoded RGB uses per-scanline colours but plane indices are
+     * still 0..(2^depth-1). Palette PNG would map indices through static PLTE only;
+     * PNGEncoder also prefers stored indices over rgbData. Force truecolour output. */
+    if (IFFMultipalette_Active(picture)) {
+        config->bit_depth = 8;
+        config->has_alpha = picture->hasAlpha;
+        if (picture->hasAlpha) {
+            config->color_type = PNG_COLOR_TYPE_RGBA;
+        } else {
+            config->color_type = PNG_COLOR_TYPE_RGB;
+        }
+        config->palette = NULL;
+        config->num_palette = 0;
+        config->trans = NULL;
+        config->num_trans = 0;
+        return RETURN_OK;
+    }
+    
     DEBUG_PUTSTR("DEBUG: GetOptimalPNGConfig - Starting analysis\n");
     DEBUG_PRINTF5("DEBUG: isHAM=%ld isEHB=%ld isIndexed=%ld isGrayscale=%ld hasAlpha=%ld\n",
                   (ULONG)(picture->isHAM ? 1 : 0), (ULONG)(picture->isEHB ? 1 : 0),

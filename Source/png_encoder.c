@@ -247,8 +247,10 @@ LONG PNGEncoder_Write(const char *filename, UBYTE *rgbData,
         ULONG dist;
         BOOL useOriginalIndices = FALSE;
         
-        /* Check if we have original palette indices (for indexed formats like ILBM) */
-        if (picture && picture->paletteIndices) {
+        /* Use stored indices only when PNG PLTE matches decode (single global CMAP).
+         * Multipalette decode fills rgbData from per-line palettes; indices would
+         * wrongly map through static PLTE (e.g. 16-colour SHAM looks flat). */
+        if (picture && picture->paletteIndices && !IFFMultipalette_Active(picture)) {
             paletteIndices = picture->paletteIndices;
             useOriginalIndices = TRUE;
         } else {

@@ -239,8 +239,53 @@ struct IFFPicture {
     /* Video Toaster Framestore: PLTP chunk (32 bytes), NULL if not present */
     UBYTE *pltp;
     
+    /* ILBM/PBM multipalette: SHAM, PCHG, CTBL (optional; see pchg_palette.c) */
+    BOOL mpalSham;
+    BOOL mpalPchg;
+    BOOL mpalCtbl;
+    UBYTE *mpalShamAlloc;      /* Full SHAM chunk copy; body starts at +2 (leading UWORD 0) */
+    ULONG mpalShamAllocSize;
+    UBYTE *mpalPchgAlloc;      /* Owns uncompressed chunk or Huffman output; FreeMem this + mpalPchgAllocSize */
+    ULONG mpalPchgAllocSize;
+    UBYTE *mpalPchgPayload;    /* Line mask + change data (inside or equal to mpalPchgAlloc) */
+    ULONG mpalPchgPayloadSize;
+    UWORD mpalPchgCompression;
+    UWORD mpalPchgFlags;
+    WORD mpalPchgStartLine;
+    UWORD mpalPchgLineCount;
+    UWORD mpalPchgChangedLines;
+    UWORD mpalPchgMinReg;
+    UWORD mpalPchgMaxReg;
+    UWORD mpalPchgMaxChanges;
+    ULONG mpalPchgTotalChanges;
+    UBYTE *mpalCtblData;       /* Raw CTBL chunk bytes (big-endian UWORDs: 12-bit 0RGB per entry) */
+    ULONG mpalCtblSize;
+    
     /* Metadata storage - allocated on demand */
     struct IFFPictureMeta *metadata;    /* Metadata structure, NULL if no metadata */
+};
+
+/* Per-decode scanline palette state (stack or AllocMem in decoder) */
+#define IFF_MPAL_MODE_NONE 0
+#define IFF_MPAL_MODE_SHAM 1
+#define IFF_MPAL_MODE_PCHG 2
+
+struct IFFMultipaletteState {
+    UBYTE ms_mode;
+    UBYTE ms_lace;
+    const UBYTE *ms_sham;
+    ULONG ms_shamRemain;
+    UWORD ms_flags;
+    WORD ms_startLine;
+    UWORD ms_lineCount;
+    UWORD ms_maskRowsLeft; /* PCHG: mask bits left to consume (LineCount), incl. trailing zeros */
+    UWORD ms_changedLines;
+    ULONG ms_totalChanges;
+    UBYTE *ms_data;
+    ULONG ms_dataRemain;
+    UBYTE ms_bits;
+    UBYTE ms_thismask;
+    const UBYTE *ms_maskPtr;
 };
 
 /* Internal function prototypes - declared in image_decoder.c */
@@ -274,6 +319,16 @@ LONG ReadDLOC(struct IFFPicture *picture);
 LONG ReadDBOD(struct IFFPicture *picture);
 LONG ReadDCHG(struct IFFPicture *picture);
 LONG ReadTVDC(struct IFFPicture *picture);
+
+/* ILBM/PBM multipalette chunk load (PCHG, SHAM, CTBL) */
+LONG ReadILBMMultipalette(struct IFFPicture *picture);
+
+/* Working palette 768 bytes (256*3); init from CMAP+CTBL; PCHG prestart; then each row */
+LONG IFFMultipalette_Init(struct IFFPicture *picture, UBYTE *pal768,
+    struct IFFMultipaletteState *st);
+LONG IFFMultipalette_ApplyScanline(struct IFFMultipaletteState *st, UWORD row,
+    UBYTE *pal768);
+BOOL IFFMultipalette_Active(const struct IFFPicture *picture);
 
 #endif /* IFFPICTURE_PRIVATE_H */
 
