@@ -1,6 +1,13 @@
-# iff2png
+# ifftools
 
-This is iff2png for Amiga. Convert IFF images (including ILBM, DEEP, RGB8, RGBN, FAXX, PBM, ACBM) to PNG format with iff2png.
+This is ifftools for Amiga. It includes:
+- iff2png for Amiga. Convert IFF Picture format images (including ILBM, DEEP, RGB8, RGBN, FAXX, PBM, ACBM) to PNG format
+- IFFPicture.lib a static link library modelled on the iffparse.library API extending iffparse's ability to include reading and writing all known IFF bitmap image formats
+- iff2aiff for Amiga. Convert IFF Sound format samples (including 8SVX, MAUD to the industry standard AIFF (Audio IFF) format)
+- IFFSound.lib a static link library modelled on the iffparse.library API extending iffparse's ability to include reading and writing all known IFF sound sample formats
+
+It also includes by necessity the libpng and zlib dependencies needed by iff2png. These are not modified at all except by the inclusion of build configurations for SAS/C on Amiga:
+- libpng 1.6 for Amiga - the standard implementation of PNG, buildable with SAS/C as a static link library
 
 ## [amigazen project](http://www.amigazen.com)
 
@@ -36,9 +43,9 @@ Each component of **ToolKit** is open source and like *make* here will have it's
 
 - Amiga or Amiga-compatible computer with latest operating system software
 
-## Usage
+## iff2png Usage
 
-iff2png converts IFF (Interchange File Format) bitmap images to PNG format. It supports all major IFF image formats including ILBM, PBM, RGBN, RGB8, DEEP, ACBM, YUVN, and FAXX. It will automatically choose the optimal profile for the PNG file based on the source file's properties.
+iff2png converts IFF (Interchange File Format) Picture bitmap images to PNG format. It supports all major IFF Picture bitmap image formats including ILBM, PBM, RGBN, RGB8, DEEP, ACBM, YUVN, and FAXX. It will automatically choose the optimal profile for the PNG file based on the source file's properties.
 
 ### Basic Syntax
 
@@ -80,7 +87,7 @@ Convert without copying metadata:
 iff2png source.iff target.png STRIP
 ```
 
-### Supported IFF Formats
+### Supported IFF Picture Formats
 
 - **ILBM** (InterLeaved BitMap) - Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue), and ILBM compression type 2 - column-wise ByteRun1
 - **PBM** (Packed BitMap) - Similar to ILBM but with packed pixels (one byte per pixel) instead of bitplanes (N.B. this is not the same as NetPBM)
@@ -98,12 +105,51 @@ iff2png source.iff target.png STRIP
 When not in quiet mode, iff2png displays detailed information about the conversion:
 
 - IFF source format, file size, dimensions, bit planes, compression method, and masking
+- Optional IFF chunk catalog and multipalette summary (non-quiet)
 - PNG target color type, bit depth, palette entries, transparency settings
 - Conversion summary with file sizes and compression ratio
 
+## iff2aiff Usage
+
+iff2aiff converts IFF **audio** (FORM 8SVX, 16SV, AIFF, AIFC, MAUD, …) to Apple **AIFF** or **AIFC** with uncompressed PCM. Sample rate, channel count, and length follow the source; output is 8-bit when the decoded source is 8-bit, otherwise 16-bit. 
+
+### Basic Syntax
+
+```
+iff2aiff SOURCE TARGET [OPTIONS]
+```
+
+### Arguments
+
+- **SOURCE** — Input IFF sound file (required)
+- **TARGET** — Output `.aiff` / `.aifc` file (required)
+
+### Options
+
+- **FORCE** — Overwrite an existing target file without prompting
+- **QUIET** — Suppress normal progress text (errors still print)
+- **AIFC** or **COMPRESS** — Write **AIFC** (`FORM AIFC`) instead of classic **AIFF** (`FORM AIFF`). Both keywords are equivalent (ReadArgs template `COMPRESS=AIFC/S`).
+
+### Examples
+
+```
+iff2aiff sample.8svx ram:sample.aiff
+iff2aiff music.maud ram:music.aiff FORCE
+iff2aiff clip.aiff ram:clip.aifc AIFC
+iff2aiff voice.iff ram:out.aiff QUIET
+```
+
+### Supported IFF sound inputs
+
+Typical forms handled via **ParseIFFSound** / **IFFSound.lib** include **8SVX** (8-bit sampled voice), **16SV**, **AIFF** / **AIFC** (re-wrapped to your chosen output container), and **MAUD** (Amiga musical data). For chunk layouts and semantics, see **SDK/Help/IFF Sound Formats.guide** and **SDK/Help/iff2aiff.guide**.
+
+### Output (non-quiet)
+
+When **QUIET** is not set, iff2aiff prints the command line, source FORM name, source rate/channels/bit depth, target AIFF vs AIFC profile, frame count, PCM byte size, and output file size.
+
 ## Contact 
 
-- At GitHub https://github.com/amigazen/iff2png/
+- At GitHub https://github.com/amigazen/ifftools/
 - on the web at http://www.amigazen.com/toolkit/ (Amiga browser compatible)
 - or email toolkit@amigazen.com
 

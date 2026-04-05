@@ -10,12 +10,13 @@
 
   iff2png is a command-line tool for converting IFF (Interchange File Format)
   bitmap images to PNG format. It supports all major IFF image formats
-  including ILBM, PBM, RGBN, RGB8, DEEP, ACBM, YUVN, 24-bit ILBM, and FAXX.
+  including ILBM, PBM, RGBN, RGB8, DEEP, ACBM, YUVN, 24-bit ILBM, and FAXX. It is part 
+  of the ifftools package for amigazen project ToolKit.
 
   Features:
   - Supports all major IFF formats (ILBM, PBM, RGBN, RGB8, DEEP, YUVN, ACBM, FAXX)
   - Additionally supports VideoToaster's proprietary Framestore ILBM format
-  - Additional handles multipalette images
+  - Handles SHAM, CTBL, and PCHG multipalette images
   - Handles 24-bit ILBM (deep ILBM with true-color RGB)
   - Automatic optimal PNG encoding based on source image properties
   - Preserves transparency and alpha channels
@@ -70,7 +71,7 @@
   and transparency handling.
 
   For more information, and to report issues, visit:
-  - GitHub: https://github.com/amigazen/iff2png/
+  - GitHub: https://github.com/amigazen/ifftools/
   - Web: http://www.amigazen.com/toolkit/
 
   This software is Free and Open Source Software distributed on BSD-2 license terms:

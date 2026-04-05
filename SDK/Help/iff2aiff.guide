@@ -1,0 +1,333 @@
+@DATABASE "iff2aiff.guide"
+@AUTHOR "amigazen project"
+@HELP "main"
+@INDEX "index"
+
+@NODE "main" "iff2aiff - IFF to AIFF Converter"
+Convert IFF audio to AIFF or AIFC format
+
+iff2aiff is a command-line tool that converts IFF (Interchange File Format) sound files to Apple AIFF (Audio IFF) or AIFC with uncompressed PCM. It uses IFFSound.lib and follows the iffparse.library pattern.
+
+@{"Overview" LINK "overview"}
+@{"Usage" LINK "usage"}
+@{"Command Line Options" LINK "options"}
+@{"Supported Formats" LINK "formats"}
+@{"AIFF Output" LINK "aiff"}
+@{"Examples" LINK "examples"}
+@{"Troubleshooting" LINK "troubleshooting"}
+@{"Technical Details" LINK "technical"}
+@{"Library API" LINK "api"}
+@{"Development" LINK "development"}
+@{"License" LINK "license"}
+@{"Support" LINK "support"}
+@{"Version History" LINK "changelog"}
+@{"Index" LINK "index"}
+@ENDNODE
+
+@NODE "overview" "Overview"
+Convert IFF audio to AIFF or AIFC format
+
+iff2aiff reads common Amiga and generic IFF audio forms, decodes to PCM, and writes a standard AIFF or AIFC file. Sample rate, channel count, and duration follow the source. Output word size is 8-bit when the source decodes as 8-bit, otherwise 16-bit.
+
+@{"Main Index" LINK "main"}
+@{"Usage Information" LINK "usage"}
+
+Key Features:
+? Input: 8SVX, 16SV, AIFF, AIFC, MAUD, and other forms supported by IFFSound.lib
+? Output: FORM AIFF or FORM AIFC with uncompressed PCM (NONE compression in AIFC path)
+? Optional AIFC container via AIFC or COMPRESS switch
+? FORCE and QUIET switches for scripting
+? Non-quiet mode prints source form, rate, channels, bit depth, frame count, and output size
+
+The tool uses the IFFSound library, modelled on iffparse.library usage, for IFF stream handling and decoding.
+@ENDNODE
+
+@NODE "usage" "Usage"
+Convert IFF audio to AIFF or AIFC format
+
+iff2aiff is a command-line tool that converts IFF sound files to AIFF or AIFC.
+
+@{"Main Index" LINK "main"}
+@{"Command Line Options" LINK "options"}
+
+Basic Syntax:
+iff2aiff SOURCE TARGET [OPTIONS]
+
+Required Arguments:
+? SOURCE - Input IFF audio file (required)
+? TARGET - Output AIFF or AIFC file (required)
+
+Optional Switches:
+? FORCE - Overwrite existing output file without prompting
+? QUIET - Suppress normal output messages (errors still displayed)
+? AIFC or COMPRESS - Write AIFC (FORM AIFC) instead of classic AIFF (FORM AIFF)
+
+Note: File extension is not used to detect format. The IFF structure determines the form type.
+
+Examples:
+iff2aiff sample.8svx ram:out.aiff
+iff2aiff music.maud ram:music.aiff FORCE
+iff2aiff clip.aiff ram:rewrap.aifc AIFC
+iff2aiff voice.iff ram:out.aiff QUIET
+
+Output:
+When not in quiet mode, iff2aiff displays:
+? Command line echo
+? Source FORM name (8SVX, 16SV, AIFF, AIFC, MAUD, etc.)
+? Source sample rate, channel count, and bit depth
+? Target format (AIFF vs AIFC) and profile (rate, channels, bit depth)
+? Frame count and PCM byte size
+? Output file size after write
+@ENDNODE
+
+@NODE "options" "Command Line Options"
+Convert IFF audio to AIFF or AIFC format
+
+Detailed explanation of command-line options for iff2aiff.
+
+@{"Main Index" LINK "main"}
+@{"Usage Information" LINK "usage"}
+
+FORCE:
+Overwrites an existing target file without prompting. Without FORCE, iff2aiff refuses to overwrite.
+
+Example:
+iff2aiff source.8svx ram:out.aiff FORCE
+
+QUIET:
+Suppresses normal progress text. Errors still print.
+
+Example:
+iff2aiff source.8svx ram:out.aiff QUIET
+
+AIFC or COMPRESS:
+Writes FORM AIFC with uncompressed PCM instead of FORM AIFF. The ReadArgs template names the keyword COMPRESS=AIFC; either AIFC or COMPRESS may be used on the command line.
+
+Example:
+iff2aiff source.maud ram:out.aifc AIFC
+@ENDNODE
+
+@NODE "formats" "Supported IFF Sound Formats"
+Convert IFF audio to AIFF or AIFC format
+
+iff2aiff relies on IFFSound.lib for parsing and decoding. Supported inputs include the common Amiga and interchange forms below; unsupported or corrupt files fail with an error string from IFFSoundErrorString().
+
+@{"Main Index" LINK "main"}
+@{"AIFF Output" LINK "aiff"}
+
+8SVX (8-Bit Sampled Voice):
+Classic Amiga mono (typically) 8-bit sampled voice under FORM 8SVX; Fibonacci and other compressions are decoded where implemented.
+
+16SV:
+16-bit sampled voice form.
+
+AIFF / AIFC (as input):
+Existing Apple AIFF or AIFC files can be read and re-written as your chosen output container (AIFF vs AIFC) and normalized PCM layout.
+
+MAUD (Amiga Musical Data):
+Musical/sampler IFF form; decoded when supported by the library.
+
+For chunk layouts, compression types, and AIFF/AIFC specifications, see the companion guide "IFF Sound Formats.guide" in this directory.
+@ENDNODE
+
+@NODE "aiff" "AIFF and AIFC Output"
+Convert IFF audio to AIFF or AIFC format
+
+iff2aiff writes standard big-endian PCM suitable for most audio tools and DAWs.
+
+@{"Main Index" LINK "main"}
+@{"Supported Formats" LINK "formats"}
+
+AIFF (default):
+? FORM AIFF with COMM and SSND chunks
+? COMM: channel count, frame count, bit depth, sample rate (80-bit IEEE extended, big-endian)
+? SSND: offset and block size fields then contiguous PCM samples (layout matches AIFFEncoder_Write / decoder output)
+
+AIFC (with AIFC or COMPRESS):
+? FORM AIFC; COMM includes compression ID NONE and name "None" for uncompressed PCM
+
+Profile:
+? Sample rate, channel count, and frame count match the decoded source
+? Bit depth: 8 if source decodes to 8-bit, otherwise 16
+
+The encoder module (aiff_encoder) writes the file via DOS; no libpng or zlib is used.
+@ENDNODE
+
+@NODE "examples" "Examples"
+Convert IFF audio to AIFF or AIFC format
+
+@{"Main Index" LINK "main"}
+@{"Usage Information" LINK "usage"}
+
+Basic conversion:
+iff2aiff sys:classes/datatypes/8svx.datatype ram:test.aiff
+
+Overwrite existing file:
+iff2aiff sample.8svx ram:sample.aiff FORCE
+
+Quiet batch:
+iff2aiff a.maud ram:a.aiff QUIET
+iff2aiff b.maud ram:b.aiff QUIET
+
+AIFC output:
+iff2aiff recording.aiff ram:recording.aifc COMPRESS
+@ENDNODE
+
+@NODE "troubleshooting" "Troubleshooting"
+Convert IFF audio to AIFF or AIFC format
+
+@{"Main Index" LINK "main"}
+@{"Usage Information" LINK "usage"}
+
+Invalid or unsupported IFF:
+? Confirm the file is IFF audio (not ILBM picture data)
+? Check the error text after IFFSoundErrorString()
+? Try a known-good 8SVX or MAUD sample
+
+Decode errors:
+? Source may use an unsupported compression or corrupt BODY
+? Verify file is complete
+
+Output file exists:
+? Use FORCE to overwrite, or choose a new target name
+
+Cannot open iffparse.library:
+? Install AmigaOS iffparse.library in LIBS:
+
+Directory instead of file:
+? iff2aiff requires a file path for SOURCE and TARGET, not a volume/drawer alone
+@ENDNODE
+
+@NODE "technical" "Technical Details"
+Convert IFF audio to AIFF or AIFC format
+
+@{"Main Index" LINK "main"}
+@{"Library API" LINK "api"}
+
+Implementation:
+? iffparse.library for IFF stream parsing (PropChunk / collection pattern via IFFSound)
+? IFFSound.lib for AllocIFFSound, ParseIFFSound, AnalyzeFormat, DecodeTo8Bit / DecodeTo16Bit
+? aiff_encoder.c for AIFF/AIFC file layout and SSND payload
+@ENDNODE
+
+@NODE "api" "IFFSound Library API"
+Convert IFF audio to AIFF or AIFC format
+
+IFFSound.lib provides IFF sound handling parallel to IFFPicture.lib for images.
+
+@{"Main Index" LINK "main"}
+@{"Technical Details" LINK "technical"}
+
+Typical sequence (see iffsound.h and SDK/doc/iffsound.doc):
+? AllocIFFSound() / FreeIFFSound()
+? InitIFFSoundasDOS(), set iff_Stream, OpenIFFSound(), ParseIFFSound()
+? AnalyzeFormat()
+? GetSampleRate(), GetChannels(), GetSampleCount(), GetBitDepth()
+? DecodeTo8Bit() or DecodeTo16Bit()
+
+Full API documentation: SDK/doc/iffsound.doc
+
+Related: iff2png and IFFPicture.lib (SDK/doc/iffpicture.doc, iff2png.guide).
+@ENDNODE
+
+@NODE "development" "Development"
+Convert IFF audio to AIFF or AIFC format
+
+@{"Main Index" LINK "main"}
+@{"Library API" LINK "api"}
+
+Building:
+? Build IFFSound.lib from Source/iffsoundlib/ first (see BUILD.md)
+? Build iff2aiff from Source/ (SMakefile target iff2aiff)
+? SAS/C, SMakefile, SCOPTIONS
+? At run time iff2aiff OpenLibrary("iffparse.library") � install iffparse.library in LIBS:
+
+No zlib or libpng build step for iff2aiff.
+@ENDNODE
+
+@NODE "license" "License and Copyright"
+Convert IFF audio to AIFF or AIFC format
+
+@{"Main Index" LINK "main"}
+
+Copyright:
+(c) 2025 amigazen project
+All rights reserved.
+
+License:
+BSD 2-Clause License (see LICENSE.md in the distribution for full text).
+
+iff2aiff and IFFSound.lib are distributed under the same project license as iff2png. Third-party zlib and libpng apply only to the iff2png build, not to iff2aiff.
+
+Disclaimer:
+? No warranty provided
+? Not responsible for data loss
+? Test with backups before batch conversion
+@ENDNODE
+
+@NODE "support" "Support and Contact"
+Convert IFF audio to AIFF or AIFC format
+
+@{"Main Index" LINK "main"}
+
+Documentation:
+? This AmigaGuide file (iff2aiff.guide)
+? README.md in the repository
+? SDK/doc/iffsound.doc
+? IFF Sound Formats.guide
+? iff2png.guide (sibling picture tool)
+
+Community:
+? GitHub: https://github.com/amigazen/ifftools/
+? Web: http://www.amigazen.com/toolkit/
+? Email: toolkit@amigazen.com
+@ENDNODE
+
+@NODE "changelog" "Version History"
+Convert IFF audio to AIFF or AIFC format
+
+@{"Main Index" LINK "main"}
+
+Version 1.0 (6.3.2026):
+? Initial iff2aiff release with IFFSound.lib integration
+? AIFF and AIFC output, FORCE/QUIET/AIFC options
+? AmigaGuide documentation (this file)
+@ENDNODE
+
+@NODE "index" "Index"
+Convert IFF audio to AIFF or AIFC format
+
+Quick reference for iff2aiff documentation.
+
+@{"Main Index" LINK "main"}
+
+Getting Started:
+@{"Overview" LINK "overview"}
+@{"Usage" LINK "usage"}
+@{"Command Line Options" LINK "options"}
+
+Formats and output:
+@{"Supported Formats" LINK "formats"}
+@{"AIFF Output" LINK "aiff"}
+
+Reference:
+@{"Examples" LINK "examples"}
+@{"Troubleshooting" LINK "troubleshooting"}
+@{"Technical Details" LINK "technical"}
+@{"Library API" LINK "api"}
+
+Other:
+@{"Development" LINK "development"}
+@{"License" LINK "license"}
+@{"Support" LINK "support"}
+@{"Version History" LINK "changelog"}
+
+Quick commands:
+? iff2aiff in.8svx out.aiff
+? iff2aiff in.maud out.aiff FORCE
+? iff2aiff in.aiff out.aifc AIFC
+? iff2aiff in.8svx out.aiff QUIET
+
+Related:
+? iff2png.guide - IFF picture to PNG
+? IFF Sound Formats.guide - chunk reference

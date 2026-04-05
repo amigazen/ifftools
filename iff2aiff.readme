@@ -1,0 +1,92 @@
+  Short:        Convert IFF audio (8SVX, 16SV, MAUD, AIFF, AIFC, etc.) to AIFF or AIFC format
+  Uploader:     toolkit@amigazen.com
+  Author:       amigazen project
+  Type:         util/conv
+  Version:      1.0
+  Architecture: m68k-amigaos >= 3.1
+  Distribution: Aminet
+  Replaces:     -
+  Kurz:         Konvertiert IFF-Audio ins AIFF-/AIFC-Format
+
+  iff2aiff is a command-line tool for converting IFF (Interchange File Format)
+  sound files to Apple AIFF (Audio IFF) or AIFC with uncompressed PCM. It is part 
+  of the ifftools package for amigazen project ToolKit.
+
+  Features:
+  - Reads common IFF audio forms: 8SVX, 16SV, AIFF, AIFC, MAUD 
+  - Writes standard FORM AIFF or FORM AIFC with PCM sample data
+  - Preserves sample rate, channel count, and duration from the source
+  - Output 8-bit or 16-bit according to decoded source (otherwise 16-bit path)
+  - Optional AIFC container (AIFC or COMPRESS switch)
+  - FORCE and QUIET for scripting
+
+  Version History
+  - 1.0: First public release (IFFSound.lib integration, AIFF/AIFC writer)
+
+  Requirements:
+  - AmigaOS 3.1 or higher
+  - 68020 CPU recommended (source available to build other targets)
+
+  Usage:
+    iff2aiff SOURCE TARGET [OPTIONS]
+
+  Arguments:
+    SOURCE - Input IFF audio file (required)
+    TARGET - Output AIFF or AIFC file (required)
+
+  Options:
+    FORCE - Overwrite existing output file without prompting
+    QUIET - Suppress normal output messages (errors still shown)
+    AIFC or COMPRESS - Write AIFC (FORM AIFC) instead of classic AIFF
+
+  Examples:
+    iff2aiff sample.8svx ram:sample.aiff
+    iff2aiff music.maud ram:music.aiff FORCE
+    iff2aiff clip.aiff ram:out.aifc AIFC
+    iff2aiff voice.iff ram:out.aiff QUIET
+
+    N.B. file extension is not used to recognize file types
+
+  Supported IFF sound inputs (typical):
+  - 8SVX - 8-bit sampled voice
+  - 16SV - 16-bit sampled voice
+  - AIFF / AIFC - re-wrapped to chosen output container
+  - MAUD - Amiga musical data (when supported by decoder)
+
+  Non-quiet output lists source FORM, rate/channels/bit depth, target profile,
+  frame count, PCM size, and written file size.
+
+  For more information, and to report issues, visit:
+  - GitHub: https://github.com/amigazen/ifftools/
+  - Web: http://www.amigazen.com/toolkit/
+
+  This software is Free and Open Source Software distributed on BSD-2 license terms:
+
+  Copyright (c) 2025 amigazen project
+  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright notice,
+     this list of conditions and the following disclaimer in the documentation
+     and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+  amigazen project philosophy is based on openness:
+  Open to anyone and everyone - Open source and free for all - Open your mind and create!
+
