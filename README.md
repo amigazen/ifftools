@@ -8,6 +8,7 @@ This is ifftools for Amiga. It includes:
 
 It also includes by necessity the libpng and zlib dependencies needed by iff2png. These are not modified at all except by the inclusion of build configurations for SAS/C on Amiga:
 - libpng 1.6 for Amiga - the standard implementation of PNG, buildable with SAS/C as a static link library
+- zlib 1.2 for Amiga - the standard implementation of zlib, buildable with SAS/C as a static link library
 
 ## [amigazen project](http://www.amigazen.com)
 
@@ -89,7 +90,7 @@ iff2png source.iff target.png STRIP
 
 ### Supported IFF Picture Formats
 
-- **ILBM** (InterLeaved BitMap) - Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue), and ILBM compression type 2 - column-wise ByteRun1
+- **ILBM** (InterLeaved BitMap) - Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue), optional **32-plane** body decode to RGBA where present, **8-bit greyscale** ILBM without `CMAP`, **NewTek Digi-View** 21-plane RGB interleaved bodies (and `DGVW` chunk recognition), **`DEST`** destination merge remapping on decode where applicable, **BMHD** mask plane, transparent colour, and lasso-style masking, **ByteRun1** including column-wise (type 2) and Photoshop-style repeat (**count 128** → 129 bytes). Top-level **`CAT `** / **`LIST`** containers: the first supported picture `FORM` in the stream is loaded (**one** image per `ParseIFFPicture` / per iff2png run). Optional property chunks **`CCRT`** (Graphicraft colour-cycle timing), **`CLUT`**, **`DGVW`**, **`DYCP`** are read and exposed via the library API (`ReadAllCCRT`, `ReadCLUT`, `ReadDGVW`, `ReadDYCP`); `CLUT` / `DYCP` are stored for tools and are not yet used to drive alternate raster colour paths.
 - **PBM** (Packed BitMap) - Similar to ILBM but with packed pixels (one byte per pixel) instead of bitplanes (N.B. this is not the same as NetPBM)
 - **RGBN** - RGB format with N planes (true-color with separate RGB channels)
 - **RGB8** - RGB 8-bit format (24-bit color, 32-bit with alpha)
@@ -105,7 +106,7 @@ iff2png source.iff target.png STRIP
 When not in quiet mode, iff2png displays detailed information about the conversion:
 
 - IFF source format, file size, dimensions, bit planes, compression method, and masking
-- Optional IFF chunk catalog and multipalette summary (non-quiet)
+- Optional IFF chunk catalog and multipalette summary (non-quiet); library queries include **`IsDigiViewRgb`** / **`IFFImageInfo.isDigiViewRgb`** for Digi-View-style RGB ILBM
 - PNG target color type, bit depth, palette entries, transparency settings
 - Conversion summary with file sizes and compression ratio
 

@@ -29,6 +29,11 @@ iffpicture.lib/ReadDEST
 iffpicture.lib/ReadSPRT
 iffpicture.lib/ReadCRNG
 iffpicture.lib/ReadAllCRNG
+iffpicture.lib/ReadCCRT
+iffpicture.lib/ReadAllCCRT
+iffpicture.lib/ReadCLUT
+iffpicture.lib/ReadDGVW
+iffpicture.lib/ReadDYCP
 iffpicture.lib/ReadCopyright
 iffpicture.lib/ReadAuthor
 iffpicture.lib/ReadAnnotation
@@ -41,6 +46,7 @@ iffpicture.lib/HasAlpha
 iffpicture.lib/IsHAM
 iffpicture.lib/IsEHB
 iffpicture.lib/IsFramestore
+iffpicture.lib/IsDigiViewRgb
 iffpicture.lib/IsCompressed
 iffpicture.lib/GetMultipaletteChunkId
 iffpicture.lib/IsMultipaletteActive
@@ -94,7 +100,8 @@ iffpicture.lib/FreeIFFPicture                         iffpicture.lib/FreeIFFPict
 	The structure MUST have already been closed with CloseIFFPicture().
 	Frees all allocated memory including BMHD, CMAP, pixel data, DEEP
 	chunks (DGBL, DPEL, DLOC, DCHG, TVDC), Framestore PLTP, FAXX/GPHD
-	and YUVN (YCHD) headers, and metadata.
+	and YUVN (YCHD) headers, metadata, CCRT cycle lists, and raw optional
+	ILBM chunks (CLUT, DGVW, DYCP) when present.
 
    INPUTS
 	picture - pointer to IFFPicture structure to free. This may be NULL.
@@ -207,14 +214,25 @@ iffpicture.lib/ParseIFFPicture                   iffpicture.lib/ParseIFFPicture
 	traverse the file and store property chunks that were declared with
 	PropChunk(). For FORM ILBM, PBM, and ACBM, optional PCHG, SHAM, and
 	CTBL multipalette chunks are read and stored when present (SHAM takes
-	precedence over PCHG when both exist).
+	precedence over PCHG when both exist). For FORM ILBM, optional DGVW,
+	CLUT, and DYCP property chunks are registered and read when present;
+	all CCRT (Graphicraft colour-cycle timing) instances are collected.
 
-	Supports FORM ILBM (including 24-bit and Video Toaster Framestore
-	16-plane + PLTP), PBM, RGBN, RGB8, FORM DEEP (DGBL, DPEL, DLOC, DBOD,
-	DCHG, TVDC), ACBM, FORM FAXX (FXHD, PAGE, GPHD), and FORM YUVN (YCHD,
-	DATY, DATU, DATV). For Framestore detection, PLTP is read when present
-	in ILBM; isFramestore is set when nPlanes=16 and PLTP maps to
-	components 6 and 7.
+	If the stream begins with FORM CAT or FORM LIST, parsing steps through
+	the container until the first supported picture FORM (ILBM, PBM, RGBN,
+	RGB8, DEEP, ACBM, FAXX, YUVN, etc.) is found. One image is loaded per
+	successful parse cycle; remaining FORMs in the container are not
+	exported by iff2png in a single run.
+
+	Supports FORM ILBM (including 24-bit, optional 32-plane and greyscale
+	paths, NewTek Digi-View 21-plane RGB when BMHD matches, Video Toaster
+	Framestore 16-plane + PLTP), PBM, RGBN, RGB8, FORM DEEP (DGBL, DPEL,
+	DLOC, DBOD, DCHG, TVDC), ACBM, FORM FAXX (FXHD, PAGE, GPHD), and FORM
+	YUVN (YCHD, DATY, DATU, DATV). For Framestore detection, PLTP is read
+	when present in ILBM; isFramestore is set when nPlanes=16 and PLTP
+	maps to components 6 and 7. For Digi-View-style RGB ILBM, isDigiViewRgb
+	is set when nPlanes==21 on the Digi-View body path and/or a DGVW chunk
+	is present (see IsDigiViewRgb()).
 
    INPUTS
 	picture - pointer to IFFPicture structure.
@@ -745,15 +763,17 @@ iffpicture.lib/GetImageInfo                           iffpicture.lib/GetImageInf
 	Returns a pointer to an IFFImageInfo structure containing all core
 	image properties in one place: width, height, depth, formType,
 	viewportModes, compressedSize, decodedSize, hasAlpha, isHAM, isEHB,
-	isFramestore, isCompressed, multipaletteChunkId, isIndexed, isGrayscale,
-	isLoaded, isDecoded. The multipaletteChunkId field matches
-	GetMultipaletteChunkId() (IFF chunk ID or 0). Useful to avoid
-	multiple getter calls. The structure is allocated statically and remains
-	valid until the next GetImageInfo() call or until the IFFPicture is
-	freed. Returns NULL if the picture is invalid or not loaded.
+	isFramestore, isDigiViewRgb, isCompressed, multipaletteChunkId,
+	isIndexed, isGrayscale, isLoaded, isDecoded. The multipaletteChunkId
+	field matches GetMultipaletteChunkId() (IFF chunk ID or 0). Useful to
+	avoid multiple getter calls. The structure is allocated statically and
+	remains valid until the next GetImageInfo() call or until the
+	IFFPicture is freed. Returns NULL if the picture is invalid or not
+	loaded.
 
 	isFramestore is TRUE for NewTek Video Toaster framestore (ILBM with
-	16 planes and PLTP mapping to components 6 and 7).
+	16 planes and PLTP mapping to components 6 and 7). isDigiViewRgb
+	matches IsDigiViewRgb() (Digi-View RGB ILBM body and/or DGVW chunk).
 
    INPUTS
 	picture - pointer to IFFPicture structure.
@@ -763,8 +783,8 @@ iffpicture.lib/GetImageInfo                           iffpicture.lib/GetImageInf
 	       loaded.
 
    SEE ALSO
-	GetWidth(), GetHeight(), GetFormType(), IsFramestore(), HasAlpha(),
-	GetMultipaletteChunkId(), <iffpicture.h>
+	GetWidth(), GetHeight(), GetFormType(), IsFramestore(), IsDigiViewRgb(),
+	HasAlpha(), GetMultipaletteChunkId(), <iffpicture.h>
 
 iffpicture.lib/HasAlpha                             iffpicture.lib/HasAlpha
 
@@ -863,7 +883,34 @@ iffpicture.lib/IsFramestore                         iffpicture.lib/IsFramestore
 	isFS - TRUE if Video Toaster framestore, FALSE otherwise.
 
    SEE ALSO
-	GetFormType(), GetImageInfo(), Decode(), <iffpicture.h>
+	GetFormType(), GetImageInfo(), Decode(), IsDigiViewRgb(), <iffpicture.h>
+
+iffpicture.lib/IsDigiViewRgb                       iffpicture.lib/IsDigiViewRgb
+
+   NAME
+	IsDigiViewRgb -- check for NewTek Digi-View RGB ILBM. (V1.0)
+
+   SYNOPSIS
+	isDv = IsDigiViewRgb(picture);
+	D0                    A0
+
+	BOOL IsDigiViewRgb(struct IFFPicture *);
+
+   FUNCTION
+	Returns TRUE when the picture is treated as Digi-View RGB: typically
+	FORM ILBM with a 21-plane interleaved body decoded on the Digi-View
+	path, and/or when a DGVW property chunk is present (tooling flag even
+	if plane count differs). Use GetImageInfo()->isDigiViewRgb for the
+	same boolean without a separate call.
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+
+   RESULT
+	isDv - TRUE if Digi-View RGB detection applies, FALSE otherwise.
+
+   SEE ALSO
+	GetImageInfo(), ParseIFFPicture(), Decode(), ReadDGVW(), <iffpicture.h>
 
 iffpicture.lib/IsCompressed                         iffpicture.lib/IsCompressed
 
@@ -985,11 +1032,15 @@ iffpicture.lib/Decode                                 iffpicture.lib/Decode
    FUNCTION
 	Decodes the IFF image data into an internal format suitable for further
 	processing. Handles all IFF formats (ILBM, PBM, RGBN, RGB8, DEEP,
-	ACBM, FAXX, YUVN) and compression methods (ByteRun1, DEEP RUNLENGTH/
-	TVDC, Modified Huffman, Modified READ, etc.). Also handles special
-	modes: HAM, EHB, multipalette (PCHG, SHAM, CTBL) on applicable indexed
-	paths, and Video Toaster Framestore (16-plane ILBM + PLTP, quadrature
-	Y/C to RGB). Must be called after ParseIFFPicture().
+	ACBM, FAXX, YUVN) and compression methods (ByteRun1 including
+	column-wise packing and repeat count 128 compatibility, DEEP RUNLENGTH/
+	TVDC, Modified Huffman, Modified READ, etc.). ILBM paths include HAM,
+	EHB, multipalette (PCHG, SHAM, CTBL) on applicable indexed paths,
+	24-bit and 32-plane RGBA-style output, greyscale without CMAP, NewTek
+	Digi-View 21-plane RGB interleaved bodies, DEST merge remapping when
+	DEST is present, BMHD mask plane and transparent colour and lasso-style
+	masking, and Video Toaster Framestore (16-plane ILBM + PLTP,
+	quadrature Y/C to RGB). Must be called after ParseIFFPicture().
 
    INPUTS
 	picture - pointer to IFFPicture structure.
@@ -1451,6 +1502,138 @@ iffpicture.lib/ReadAllCRNG                       iffpicture.lib/ReadAllCRNG
 
    SEE ALSO
 	ReadCRNG(), ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
+
+iffpicture.lib/ReadCCRT                             iffpicture.lib/ReadCCRT
+
+   NAME
+	ReadCCRT -- read CCRT chunk (Graphicraft colour-cycle timing, first). (V1.0)
+
+   SYNOPSIS
+	ccrt = ReadCCRT(picture);
+	D0                A0
+
+	struct CycleInfo *ReadCCRT(struct IFFPicture *);
+
+   FUNCTION
+	Returns a pointer to the first CCRT (Graphicraft) colour-cycle timing
+	record stored during parse, or NULL if none. CCRT complements CRNG with
+	interval timing (seconds/microseconds). Library-owned memory; valid
+	until FreeIFFPicture(). For every CCRT instance, use ReadAllCCRT().
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+
+   RESULT
+	ccrt - pointer to CycleInfo, or NULL.
+
+   SEE ALSO
+	ReadAllCCRT(), ParseIFFPicture(), <iffpicture.h>
+
+iffpicture.lib/ReadAllCCRT                       iffpicture.lib/ReadAllCCRT
+
+   NAME
+	ReadAllCCRT -- read all CCRT chunks. (V1.0)
+
+   SYNOPSIS
+	list = ReadAllCCRT(picture);
+	D0                  A0
+
+	struct CycleInfoList *ReadAllCCRT(struct IFFPicture *);
+
+   FUNCTION
+	Returns a CycleInfoList (count + items array) for all CCRT chunks
+	collected during ParseIFFPicture(), or NULL if none. Library-owned;
+	valid until FreeIFFPicture().
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+
+   RESULT
+	list - pointer to CycleInfoList, or NULL.
+
+   SEE ALSO
+	ReadCCRT(), ParseIFFPicture(), <iffpicture.h>
+
+iffpicture.lib/ReadCLUT                             iffpicture.lib/ReadCLUT
+
+   NAME
+	ReadCLUT -- read CLUT chunk (raw payload). (V1.0)
+
+   SYNOPSIS
+	data = ReadCLUT(picture, sizeOut);
+	D0                A0      A1
+
+	UBYTE *ReadCLUT(struct IFFPicture *, ULONG *sizeOut);
+
+   FUNCTION
+	Returns a pointer to the raw CLUT chunk body and sets *sizeOut to the
+	byte length, or NULL / 0 if absent. Stored for host tools; decode does
+	not yet drive deep ILBM colour solely from CLUT. Library-owned until
+	FreeIFFPicture().
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+	sizeOut - pointer to ULONG to receive payload size (may be NULL to
+		  ignore size if the return value is sufficient).
+
+   RESULT
+	data - pointer to CLUT bytes, or NULL.
+
+   SEE ALSO
+	ReadDYCP(), ReadDGVW(), ParseIFFPicture(), <iffpicture.h>
+
+iffpicture.lib/ReadDGVW                             iffpicture.lib/ReadDGVW
+
+   NAME
+	ReadDGVW -- read DGVW chunk (Digi-View, raw payload). (V1.0)
+
+   SYNOPSIS
+	data = ReadDGVW(picture, sizeOut);
+	D0                A0      A1
+
+	UBYTE *ReadDGVW(struct IFFPicture *, ULONG *sizeOut);
+
+   FUNCTION
+	Returns the raw DGVW property chunk body and sets *sizeOut, or NULL.
+	Presence contributes to IsDigiViewRgb() for tooling. Library-owned
+	until FreeIFFPicture().
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+	sizeOut - pointer to ULONG for payload size, or NULL.
+
+   RESULT
+	data - pointer to DGVW bytes, or NULL.
+
+   SEE ALSO
+	IsDigiViewRgb(), ReadCLUT(), ParseIFFPicture(), <iffpicture.h>
+
+iffpicture.lib/ReadDYCP                             iffpicture.lib/ReadDYCP
+
+   NAME
+	ReadDYCP -- read DYCP chunk (dynamic palette, raw payload). (V1.0)
+
+   SYNOPSIS
+	data = ReadDYCP(picture, sizeOut);
+	D0                A0      A1
+
+	UBYTE *ReadDYCP(struct IFFPicture *, ULONG *sizeOut);
+
+   FUNCTION
+	Returns the raw DYCP chunk body and sets *sizeOut, or NULL. Payload
+	is stored for tools; raster decode does not simulate dynamic HAM /
+	hardware palette behaviour from DYCP yet. Library-owned until
+	FreeIFFPicture().
+
+   INPUTS
+	picture - pointer to IFFPicture structure.
+	sizeOut - pointer to ULONG for payload size, or NULL.
+
+   RESULT
+	data - pointer to DYCP bytes, or NULL.
+
+   SEE ALSO
+	ReadCLUT(), ParseIFFPicture(), <iffpicture.h>
 
 iffpicture.lib/ReadCopyright                     iffpicture.lib/ReadCopyright
 

@@ -313,6 +313,15 @@ struct CRange {
     UBYTE low, high; /* lower and upper color registers selected */
 };
 
+/* CCRT (Graphicraft) color cycle timing — see EA ILBM supplement */
+struct CycleInfo {
+    WORD direction;       /* 0 = off, 1 = forwards, -1 = backwards */
+    UBYTE start, end;   /* color register range */
+    LONG seconds;       /* interval between steps */
+    LONG microseconds;
+    WORD pad;           /* reserved; 0 */
+};
+
 /* CRNG flags */
 #define RNG_ACTIVE  1
 #define RNG_REVERSE 2
@@ -321,6 +330,11 @@ struct CRange {
 struct CRangeList {
     ULONG count;                /* Number of CRange entries */
     struct CRange *ranges;     /* Array of CRange structures */
+};
+
+struct CycleInfoList {
+    ULONG count;
+    struct CycleInfo *items;
 };
 
 struct TextList {
@@ -353,6 +367,11 @@ struct DestMerge *ReadDEST(struct IFFPicture *picture);
 UWORD *ReadSPRT(struct IFFPicture *picture);
 struct CRange *ReadCRNG(struct IFFPicture *picture);
 struct CRangeList *ReadAllCRNG(struct IFFPicture *picture);
+struct CycleInfo *ReadCCRT(struct IFFPicture *picture);
+struct CycleInfoList *ReadAllCCRT(struct IFFPicture *picture);
+UBYTE *ReadCLUT(struct IFFPicture *picture, ULONG *size);
+UBYTE *ReadDGVW(struct IFFPicture *picture, ULONG *size);
+UBYTE *ReadDYCP(struct IFFPicture *picture, ULONG *size);
 STRPTR ReadCopyright(struct IFFPicture *picture);
 STRPTR ReadAuthor(struct IFFPicture *picture);
 STRPTR ReadAnnotation(struct IFFPicture *picture);
@@ -465,6 +484,7 @@ BOOL HasAlpha(struct IFFPicture *picture);
 BOOL IsHAM(struct IFFPicture *picture);
 BOOL IsEHB(struct IFFPicture *picture);
 BOOL IsFramestore(struct IFFPicture *picture);  /* TRUE if NewTek Video Toaster framestore (16-plane ILBM + PLTP) */
+BOOL IsDigiViewRgb(struct IFFPicture *picture); /* TRUE if 21-plane Digi-View RGB body and/or DGVW chunk */
 BOOL IsCompressed(struct IFFPicture *picture);
 ULONG GetMultipaletteChunkId(struct IFFPicture *picture);
 BOOL IsMultipaletteActive(struct IFFPicture *picture);
@@ -483,6 +503,7 @@ struct IFFImageInfo {
     BOOL isHAM;                 /* TRUE if image uses HAM mode */
     BOOL isEHB;                 /* TRUE if image uses Extra Half-Brite mode */
     BOOL isFramestore;          /* TRUE if NewTek Video Toaster framestore (16-plane ILBM + PLTP) */
+    BOOL isDigiViewRgb;         /* TRUE if 21-plane Digi-View RGB and/or DGVW (see IsDigiViewRgb) */
     BOOL isCompressed;          /* TRUE if image data is compressed */
     ULONG multipaletteChunkId;  /* IFF chunk ID from GetMultipaletteChunkId(), or 0 */
     BOOL isIndexed;             /* TRUE if image uses indexed color (palette) */

@@ -741,8 +741,6 @@ static LONG DecompressByteRun1(struct IFFHandle *iff, UBYTE *dest, LONG destByte
     UBYTE code;
     LONG count;
     UBYTE value;
-    /* Optimization: Use constant for -128 comparison to help compiler generate CMP.W */
-    LONG minus128 = -128;
     
     while (bytesLeft > 0) {
         /* Read control byte */
@@ -763,9 +761,23 @@ static LONG DecompressByteRun1(struct IFFHandle *iff, UBYTE *dest, LONG destByte
             }
             out += count;
             bytesLeft -= count;
-        } else if (code != (UBYTE)minus128) {
+        } else if (code == 128) {
+            /* Photoshop writes ILBM PackBits with 0x80 as repeat-129 (EA IFF appendix); treat as repeat. */
+            count = 129;
+            if (count > bytesLeft) {
+                return -1;
+            }
+            bytesRead = ReadChunkBytes(iff, &value, 1);
+            if (bytesRead != 1) {
+                return -1;
+            }
+            while (count > 0) {
+                *out++ = value;
+                bytesLeft--;
+                count--;
+            }
+        } else {
             /* Repeat run: next byte repeated (256-code)+1 times */
-            /* For code 129-255: count = 256-code, we write count+1 bytes */
             count = 256 - code;
             if ((count + 1) > bytesLeft) {
                 return -1; /* Would overflow */
@@ -774,14 +786,12 @@ static LONG DecompressByteRun1(struct IFFHandle *iff, UBYTE *dest, LONG destByte
             if (bytesRead != 1) {
                 return -1; /* Error reading */
             }
-            /* Write count+1 bytes (loop from count down to 0 inclusive) */
             while (count >= 0) {
                 *out++ = value;
                 bytesLeft--;
                 count--;
             }
         }
-        /* code == 128 is NOP, continue */
     }
     
     return destBytes - bytesLeft;
@@ -807,7 +817,12 @@ static LONG UnpackByteRun1Buffer(const UBYTE *src, ULONG srcLen, UBYTE *dest, UL
             CopyMem((APTR)(src + inPos), dest + outPos, count);
             inPos += count;
             outPos += count;
-        } else if (n != 128) {
+        } else if (n == 128) {
+            count = 129;
+            if (inPos >= srcLen || outPos + count > destLen) return RETURN_FAIL;
+            val = src[inPos++];
+            while (count-- > 0) dest[outPos++] = val;
+        } else {
             count = 257 - (ULONG)n;
             if (inPos >= srcLen || outPos + count > destLen) return RETURN_FAIL;
             val = src[inPos++];
@@ -838,7 +853,12 @@ static LONG UnpackByteRun1Exact(const UBYTE *src, ULONG srcLen, UBYTE *dest, ULO
             CopyMem((APTR)(src + inPos), dest + outPos, count);
             inPos += count;
             outPos += count;
-        } else if (n != 128) {
+        } else if (n == 128) {
+            count = 129;
+            if (inPos >= srcLen || outPos + count > destLen) return -1;
+            val = src[inPos++];
+            while (count-- > 0) dest[outPos++] = val;
+        } else {
             count = 257 - (ULONG)n;
             if (inPos >= srcLen || outPos + count > destLen) return -1;
             val = src[inPos++];
@@ -1059,6 +1079,182 @@ static LONG ReadBodyRow(struct IFFPicture *picture, UBYTE *dest, ULONG rowBytes)
         return -1;  /* Unsupported compression (e.g. > 2) */
     }
     return (LONG)ReadChunkBytes(picture->iff, dest, rowBytes);
+}
+
+/*
+** ilbm_want_dest - TRUE if DEST chunk changes how source planes map to pixel indices.
+*/
+static BOOL ilbm_want_dest(struct DestMerge *dest, UBYTE nPlanes)
+{
+    UWORD full;
+    if (!dest) {
+        return FALSE;
+    }
+    if (nPlanes == 0 || nPlanes > 16) {
+        return TRUE;
+    }
+    full = (UWORD)((1UL << nPlanes) - 1UL);
+    if (dest->depth != nPlanes) {
+        return TRUE;
+    }
+    if (dest->planeMask != full || dest->planePick != full) {
+        return TRUE;
+    }
+    if (dest->planeOnOff != 0) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/*
+** ilbm_dest_remap_pixel - Scatter nPlanes source bits into dest depth per DEST (EA ILBM).
+*/
+static UWORD ilbm_dest_remap_pixel(struct DestMerge *dest, UWORD srcBits, UBYTE nPlanes)
+{
+    UWORD outv;
+    UWORD j;
+    UWORD bit;
+    UBYTE si;
+    UWORD dlim;
+    UWORD pick;
+    UWORD onoff;
+    UWORD mask;
+    
+    if (!dest || dest->depth == 0) {
+        return srcBits;
+    }
+    pick = dest->planePick;
+    onoff = dest->planeOnOff;
+    mask = dest->planeMask;
+    outv = 0;
+    si = 0;
+    dlim = dest->depth;
+    if (dlim > 16) {
+        dlim = 16;
+    }
+    for (j = 0; j < dlim; j++) {
+        bit = (UWORD)(1U << j);
+        if ((mask & bit) == 0) {
+            continue;
+        }
+        if (pick & bit) {
+            if (si >= nPlanes) {
+                return srcBits;
+            }
+            if (srcBits & ((UWORD)1U << si)) {
+                outv |= bit;
+            }
+            si++;
+        } else {
+            if (onoff & bit) {
+                outv |= bit;
+            }
+        }
+    }
+    return outv;
+}
+
+/*
+** ilbm_lasso_alpha - Flood from image border through transparentIdx; matched region -> alpha 0 (ILBM lasso).
+*/
+static VOID ilbm_lasso_alpha(UBYTE *alpha, const UBYTE *indices, UWORD w, UWORD h, UWORD transparentIdx)
+{
+    ULONG *queue;
+    UBYTE *visited;
+    ULONG qs;
+    ULONG qe;
+    ULONG qcap;
+    ULONG x;
+    ULONG y;
+    ULONG idx;
+    ULONG n;
+    ULONG nx;
+    ULONG ny;
+    ULONG i;
+    UBYTE t;
+    
+    n = (ULONG)w * (ULONG)h;
+    t = (UBYTE)(transparentIdx & 0xFFU);
+    for (i = 0; i < n; i++) {
+        alpha[i] = 255;
+    }
+    if (n == 0) {
+        return;
+    }
+    qcap = n;
+    queue = (ULONG *)AllocMem(qcap * sizeof(ULONG), MEMF_PUBLIC | MEMF_CLEAR);
+    visited = (UBYTE *)AllocMem(n * sizeof(UBYTE), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!queue || !visited) {
+        if (queue) {
+            FreeMem(queue, qcap * sizeof(ULONG));
+        }
+        if (visited) {
+            FreeMem(visited, n * sizeof(UBYTE));
+        }
+        return;
+    }
+    qs = 0;
+    qe = 0;
+    for (x = 0; x < (ULONG)w; x++) {
+        idx = x;
+        if (indices[idx] == t) {
+            visited[idx] = 1;
+            queue[qe++] = idx;
+        }
+        idx = (ULONG)(h - 1U) * (ULONG)w + x;
+        if (indices[idx] == t) {
+            visited[idx] = 1;
+            queue[qe++] = idx;
+        }
+    }
+    for (y = 0; y < (ULONG)h; y++) {
+        idx = y * (ULONG)w;
+        if (indices[idx] == t && !visited[idx]) {
+            visited[idx] = 1;
+            queue[qe++] = idx;
+        }
+        idx = y * (ULONG)w + (ULONG)(w - 1U);
+        if (indices[idx] == t && !visited[idx]) {
+            visited[idx] = 1;
+            queue[qe++] = idx;
+        }
+    }
+    while (qs < qe) {
+        idx = queue[qs++];
+        alpha[idx] = 0;
+        x = idx % (ULONG)w;
+        y = idx / (ULONG)w;
+        if (x > 0) {
+            nx = idx - 1;
+            if (!visited[nx] && indices[nx] == t) {
+                visited[nx] = 1;
+                queue[qe++] = nx;
+            }
+        }
+        if (x + 1 < (ULONG)w) {
+            nx = idx + 1;
+            if (!visited[nx] && indices[nx] == t) {
+                visited[nx] = 1;
+                queue[qe++] = nx;
+            }
+        }
+        if (y > 0) {
+            ny = idx - (ULONG)w;
+            if (!visited[ny] && indices[ny] == t) {
+                visited[ny] = 1;
+                queue[qe++] = ny;
+            }
+        }
+        if (y + 1 < (ULONG)h) {
+            ny = idx + (ULONG)w;
+            if (!visited[ny] && indices[ny] == t) {
+                visited[ny] = 1;
+                queue[qe++] = ny;
+            }
+        }
+    }
+    FreeMem(queue, qcap * sizeof(ULONG));
+    FreeMem(visited, n * sizeof(UBYTE));
 }
 
 /* Video Toaster Framestore constants (quadrature YCbCr decode) */
@@ -1284,21 +1480,43 @@ LONG DecodeILBM(struct IFFPicture *picture)
     UWORD rowBytes;
     UBYTE *planeBuffer;
     UBYTE *rgbOut;
-    UBYTE *paletteOut; /* For storing original palette indices */
+    UBYTE *paletteOut;
     UWORD row, plane, col;
     UBYTE pixelIndex;
+    UWORD pixW;
     LONG bytesRead;
     UBYTE *cmapData;
     ULONG maxColors;
-    UBYTE *alphaValues; /* For mask plane alpha channel */
-    BOOL is24Bit; /* TRUE if 24-bit ILBM (direct RGB) */
-    UBYTE *workPal; /* 256*3 working palette for SHAM/PCHG/CTBL */
+    UBYTE *alphaValues;
+    BOOL is24Bit;
+    BOOL is32Bit;
+    BOOL isGrey8;
+    BOOL digiviewRgb21;
+    ULONG bpp;
+    BOOL wantAlpha;
+    BOOL useDest;
+    struct DestMerge *destM;
+    UBYTE *workPal;
     BOOL mpalOn;
     struct IFFMultipaletteState mpst;
     const UBYTE *palSrc;
+    UBYTE transIdx;
+    UBYTE aByte;
+    ULONG pixCount;
+    ULONG pi;
+    UBYTE rv;
+    UBYTE gv;
+    UBYTE bv;
+    UBYTE bitv;
+    UWORD p;
+    ULONG greyV;
     
     workPal = NULL;
     mpalOn = FALSE;
+    alphaValues = NULL;
+    cmapData = NULL;
+    paletteOut = NULL;
+    destM = NULL;
     
     if (!picture || !picture->bmhd) {
         SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing BMHD for ILBM decoding");
@@ -1309,11 +1527,12 @@ LONG DecodeILBM(struct IFFPicture *picture)
     height = picture->bmhd->h;
     depth = picture->bmhd->nPlanes;
     
-    /* Check if this is 24-bit ILBM (deep ILBM) */
-    is24Bit = (depth == 24);
+    is24Bit = (depth == 24U);
+    is32Bit = (depth == 32U);
+    isGrey8 = (depth == 8U && (!picture->cmap || !picture->cmap->data));
+    digiviewRgb21 = (depth == 21U);
     
-    /* For non-24-bit ILBM, CMAP is required */
-    if (!is24Bit) {
+    if (!is24Bit && !is32Bit && !isGrey8 && !digiviewRgb21) {
         if (!picture->cmap || !picture->cmap->data) {
             SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing CMAP for ILBM decoding");
             return RETURN_FAIL;
@@ -1321,9 +1540,33 @@ LONG DecodeILBM(struct IFFPicture *picture)
         cmapData = picture->cmap->data;
         maxColors = picture->cmap->numcolors;
     } else {
-        /* 24-bit ILBM doesn't require CMAP */
         cmapData = NULL;
         maxColors = 0;
+    }
+    
+    destM = ReadDEST(picture);
+    useDest = FALSE;
+    if (destM && depth <= 16U && !is24Bit && !is32Bit && !isGrey8 && !digiviewRgb21) {
+        useDest = ilbm_want_dest(destM, (UBYTE)depth);
+    }
+    
+    wantAlpha = FALSE;
+    bpp = 3;
+    if (picture->bmhd->masking == mskHasMask
+        || picture->bmhd->masking == mskHasTransparentColor
+        || picture->bmhd->masking == mskLasso
+        || is32Bit) {
+        wantAlpha = TRUE;
+        bpp = 4;
+        picture->hasAlpha = TRUE;
+    } else {
+        picture->hasAlpha = FALSE;
+    }
+    
+    transIdx = 0;
+    if (picture->bmhd->masking == mskHasTransparentColor
+        || picture->bmhd->masking == mskLasso) {
+        transIdx = (UBYTE)(picture->bmhd->transparentColor & 0xFFU);
     }
     
     DEBUG_PRINTF4("DEBUG: DecodeILBM - Starting decode: %ldx%ld, %ld planes, masking=%ld\n",
@@ -1343,14 +1586,7 @@ LONG DecodeILBM(struct IFFPicture *picture)
         picture->pixelDataSize = 0;
     }
     
-    /* Allocate pixel data buffer */
-    if (picture->bmhd->masking == mskHasMask) {
-        picture->pixelDataSize = (ULONG)width * height * 4; /* RGBA */
-        picture->hasAlpha = TRUE;
-    } else {
-        picture->pixelDataSize = (ULONG)width * height * 3; /* RGB */
-        picture->hasAlpha = FALSE;
-    }
+    picture->pixelDataSize = (ULONG)width * height * bpp;
     
     /* Use public memory (not chip RAM, we're not rendering to display) */
     picture->pixelData = (UBYTE *)AllocMem(picture->pixelDataSize, MEMF_PUBLIC | MEMF_CLEAR);
@@ -1359,8 +1595,8 @@ LONG DecodeILBM(struct IFFPicture *picture)
         return RETURN_FAIL;
     }
     
-    /* For indexed images (non-24-bit), also store original palette indices */
-    if (!is24Bit) {
+    /* Indexed ILBM: keep palette indices for PNG tRNS and lasso mask */
+    if (!is24Bit && !is32Bit && !isGrey8 && !digiviewRgb21) {
         picture->paletteIndicesSize = (ULONG)width * height;
         picture->paletteIndices = (UBYTE *)AllocMem(picture->paletteIndicesSize, MEMF_PUBLIC | MEMF_CLEAR);
         if (!picture->paletteIndices) {
@@ -1429,7 +1665,7 @@ LONG DecodeILBM(struct IFFPicture *picture)
         }
     }
     
-    if (!is24Bit) {
+    if (!is24Bit && !is32Bit && !isGrey8 && !digiviewRgb21) {
         mpalOn = IFFMultipalette_Active(picture);
         if (mpalOn) {
             workPal = (UBYTE *)AllocMem(768, MEMF_PUBLIC | MEMF_CLEAR);
@@ -1457,7 +1693,92 @@ LONG DecodeILBM(struct IFFPicture *picture)
     
     /* Process each row */
     for (row = 0; row < height; row++) {
-        if (is24Bit) {
+        if (is32Bit) {
+            /* 32-bit RGBA ILBM: 24 RGB planes + 8 alpha planes (EA IFF supplement) */
+            UBYTE *rValues, *gValues, *bValues, *aValues;
+            
+            rValues = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+            gValues = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+            bValues = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+            aValues = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+            if (!rValues || !gValues || !bValues || !aValues) {
+                if (rValues) FreeMem(rValues, width);
+                if (gValues) FreeMem(gValues, width);
+                if (bValues) FreeMem(bValues, width);
+                if (aValues) FreeMem(aValues, width);
+                FreeMem(planeBuffer, rowBytes);
+                if (alphaValues) FreeMem(alphaValues, width);
+                SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate 32-bit ILBM buffers");
+                return RETURN_FAIL;
+            }
+            for (plane = 0; plane < 8; plane++) {
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rValues, width);
+                    FreeMem(gValues, width);
+                    FreeMem(bValues, width);
+                    FreeMem(aValues, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
+                    return RETURN_FAIL;
+                }
+                ExtractBitsFromPlane(planeBuffer, rValues, width, rowBytes, plane);
+            }
+            for (plane = 8; plane < 16; plane++) {
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rValues, width);
+                    FreeMem(gValues, width);
+                    FreeMem(bValues, width);
+                    FreeMem(aValues, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
+                    return RETURN_FAIL;
+                }
+                ExtractBitsFromPlane(planeBuffer, gValues, width, rowBytes, plane - 8);
+            }
+            for (plane = 16; plane < 24; plane++) {
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rValues, width);
+                    FreeMem(gValues, width);
+                    FreeMem(bValues, width);
+                    FreeMem(aValues, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
+                    return RETURN_FAIL;
+                }
+                ExtractBitsFromPlane(planeBuffer, bValues, width, rowBytes, plane - 16);
+            }
+            for (plane = 24; plane < 32; plane++) {
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rValues, width);
+                    FreeMem(gValues, width);
+                    FreeMem(bValues, width);
+                    FreeMem(aValues, width);
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read alpha plane data");
+                    return RETURN_FAIL;
+                }
+                ExtractBitsFromPlane(planeBuffer, aValues, width, rowBytes, plane - 24);
+            }
+            for (col = 0; col < width; col++) {
+                rgbOut[0] = rValues[col];
+                rgbOut[1] = gValues[col];
+                rgbOut[2] = bValues[col];
+                rgbOut[3] = aValues[col];
+                rgbOut += 4;
+            }
+            FreeMem(rValues, width);
+            FreeMem(gValues, width);
+            FreeMem(bValues, width);
+            FreeMem(aValues, width);
+        } else if (is24Bit) {
             /* 24-bit ILBM: Decode bitplanes directly as RGB */
             /* Planes 0-7: Red, Planes 8-15: Green, Planes 16-23: Blue */
             UBYTE *rValues, *gValues, *bValues;
@@ -1557,6 +1878,191 @@ LONG DecodeILBM(struct IFFPicture *picture)
             FreeMem(rValues, width);
             FreeMem(gValues, width);
             FreeMem(bValues, width);
+        } else if (isGrey8) {
+            UBYTE *pixelIndices;
+            pixelIndices = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+            if (!pixelIndices) {
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
+                FreeMem(planeBuffer, rowBytes);
+                if (alphaValues) FreeMem(alphaValues, width);
+                if (picture->paletteIndices) {
+                    FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                    picture->paletteIndices = NULL;
+                    picture->paletteIndicesSize = 0;
+                }
+                FreeMem(picture->pixelData, picture->pixelDataSize);
+                picture->pixelData = NULL;
+                picture->pixelDataSize = 0;
+                SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate grey row buffer");
+                return RETURN_FAIL;
+            }
+            for (plane = 0; plane < 8; plane++) {
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(pixelIndices, width);
+                    if (workPal) {
+                        FreeMem(workPal, 768);
+                    }
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    if (picture->paletteIndices) {
+                        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                        picture->paletteIndices = NULL;
+                        picture->paletteIndicesSize = 0;
+                    }
+                    FreeMem(picture->pixelData, picture->pixelDataSize);
+                    picture->pixelData = NULL;
+                    picture->pixelDataSize = 0;
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read grey plane data");
+                    return RETURN_FAIL;
+                }
+                ExtractBitsFromPlane(planeBuffer, pixelIndices, width, rowBytes, plane);
+            }
+            if (picture->bmhd->masking == mskHasMask) {
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(pixelIndices, width);
+                    if (workPal) {
+                        FreeMem(workPal, 768);
+                    }
+                    FreeMem(planeBuffer, rowBytes);
+                    FreeMem(alphaValues, width);
+                    if (picture->paletteIndices) {
+                        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                        picture->paletteIndices = NULL;
+                        picture->paletteIndicesSize = 0;
+                    }
+                    FreeMem(picture->pixelData, picture->pixelDataSize);
+                    picture->pixelData = NULL;
+                    picture->pixelDataSize = 0;
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read mask plane");
+                    return RETURN_FAIL;
+                }
+                ExtractAlphaFromPlane(planeBuffer, alphaValues, width, rowBytes);
+            }
+            for (col = 0; col < width; col++) {
+                greyV = (ULONG)pixelIndices[col];
+                rgbOut[0] = (UBYTE)greyV;
+                rgbOut[1] = (UBYTE)greyV;
+                rgbOut[2] = (UBYTE)greyV;
+                aByte = 255;
+                if (picture->bmhd->masking == mskHasMask) {
+                    aByte = alphaValues[col];
+                } else if (picture->bmhd->masking == mskHasTransparentColor
+                    && (UBYTE)greyV == transIdx) {
+                    aByte = 0;
+                }
+                if (wantAlpha) {
+                    rgbOut[3] = aByte;
+                    rgbOut += 4;
+                } else {
+                    rgbOut += 3;
+                }
+            }
+            FreeMem(pixelIndices, width);
+        } else if (digiviewRgb21) {
+            UBYTE *rAcc;
+            UBYTE *gAcc;
+            UBYTE *bAcc;
+            rAcc = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+            gAcc = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+            bAcc = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+            if (!rAcc || !gAcc || !bAcc) {
+                if (rAcc) FreeMem(rAcc, width);
+                if (gAcc) FreeMem(gAcc, width);
+                if (bAcc) FreeMem(bAcc, width);
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
+                FreeMem(planeBuffer, rowBytes);
+                if (alphaValues) FreeMem(alphaValues, width);
+                if (picture->paletteIndices) {
+                    FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                    picture->paletteIndices = NULL;
+                    picture->paletteIndicesSize = 0;
+                }
+                FreeMem(picture->pixelData, picture->pixelDataSize);
+                picture->pixelData = NULL;
+                picture->pixelDataSize = 0;
+                SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate Digi-View RGB row buffers");
+                return RETURN_FAIL;
+            }
+            for (p = 0; p < 21; p++) {
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rAcc, width);
+                    FreeMem(gAcc, width);
+                    FreeMem(bAcc, width);
+                    if (workPal) {
+                        FreeMem(workPal, 768);
+                    }
+                    FreeMem(planeBuffer, rowBytes);
+                    if (alphaValues) FreeMem(alphaValues, width);
+                    if (picture->paletteIndices) {
+                        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                        picture->paletteIndices = NULL;
+                        picture->paletteIndicesSize = 0;
+                    }
+                    FreeMem(picture->pixelData, picture->pixelDataSize);
+                    picture->pixelData = NULL;
+                    picture->pixelDataSize = 0;
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read Digi-View RGB plane data");
+                    return RETURN_FAIL;
+                }
+                for (col = 0; col < width; col++) {
+                    bitv = (UBYTE)((planeBuffer[col >> 3] >> (7 - (col & 7))) & 1);
+                    if ((p % 3U) == 0U) {
+                        rAcc[col] = (UBYTE)(rAcc[col] | (UBYTE)(bitv << (6U - (p / 3U))));
+                    } else if ((p % 3U) == 1U) {
+                        gAcc[col] = (UBYTE)(gAcc[col] | (UBYTE)(bitv << (6U - (p / 3U))));
+                    } else {
+                        bAcc[col] = (UBYTE)(bAcc[col] | (UBYTE)(bitv << (6U - (p / 3U))));
+                    }
+                }
+            }
+            if (picture->bmhd->masking == mskHasMask) {
+                bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+                if (bytesRead != (LONG)rowBytes) {
+                    FreeMem(rAcc, width);
+                    FreeMem(gAcc, width);
+                    FreeMem(bAcc, width);
+                    if (workPal) {
+                        FreeMem(workPal, 768);
+                    }
+                    FreeMem(planeBuffer, rowBytes);
+                    FreeMem(alphaValues, width);
+                    if (picture->paletteIndices) {
+                        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                        picture->paletteIndices = NULL;
+                        picture->paletteIndicesSize = 0;
+                    }
+                    FreeMem(picture->pixelData, picture->pixelDataSize);
+                    picture->pixelData = NULL;
+                    picture->pixelDataSize = 0;
+                    SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read mask plane");
+                    return RETURN_FAIL;
+                }
+                ExtractAlphaFromPlane(planeBuffer, alphaValues, width, rowBytes);
+            }
+            for (col = 0; col < width; col++) {
+                rv = (UBYTE)((rAcc[col] * 255U) / 127U);
+                gv = (UBYTE)((gAcc[col] * 255U) / 127U);
+                bv = (UBYTE)((bAcc[col] * 255U) / 127U);
+                rgbOut[0] = rv;
+                rgbOut[1] = gv;
+                rgbOut[2] = bv;
+                if (picture->bmhd->masking == mskHasMask) {
+                    rgbOut[3] = alphaValues[col];
+                    rgbOut += 4;
+                } else {
+                    rgbOut += 3;
+                }
+            }
+            FreeMem(rAcc, width);
+            FreeMem(gAcc, width);
+            FreeMem(bAcc, width);
         } else {
             /* Standard ILBM: Build pixel indices and look up in CMAP */
             /* Clear pixel indices for this row */
@@ -1639,35 +2145,41 @@ LONG DecodeILBM(struct IFFPicture *picture)
                 ExtractAlphaFromPlane(planeBuffer, alphaValues, width, rowBytes);
             }
             
-            /* Convert pixel indices to RGB using CMAP and store original indices */
+            /* Convert pixel indices to RGB using CMAP; optional DEST remap; alpha from mask / transparent / lasso */
             for (col = 0; col < width; col++) {
-                pixelIndex = pixelIndices[col];
-                
-                /* Clamp to valid CMAP range */
-                if (pixelIndex >= maxColors) {
+                pixW = (UWORD)pixelIndices[col];
+                if (useDest) {
+                    pixW = ilbm_dest_remap_pixel(destM, pixW, (UBYTE)depth);
+                }
+                if (pixW >= maxColors) {
                     pixelIndex = (UBYTE)(maxColors - 1);
+                } else {
+                    pixelIndex = (UBYTE)(pixW & 0xFFU);
                 }
                 
-                /* Store original palette index */
                 if (paletteOut) {
                     *paletteOut++ = pixelIndex;
                 }
                 
-                /* Look up RGB from CMAP or per-scanline palette */
-                rgbOut[0] = palSrc[pixelIndex * 3];     /* R */
-                rgbOut[1] = palSrc[pixelIndex * 3 + 1]; /* G */
-                rgbOut[2] = palSrc[pixelIndex * 3 + 2]; /* B */
+                rgbOut[0] = palSrc[pixelIndex * 3];
+                rgbOut[1] = palSrc[pixelIndex * 3 + 1];
+                rgbOut[2] = palSrc[pixelIndex * 3 + 2];
                 
-                /* Handle 4-bit palette scaling if needed */
                 if (picture->cmap && picture->cmap->is4Bit && !mpalOn) {
                     rgbOut[0] |= (rgbOut[0] >> 4);
                     rgbOut[1] |= (rgbOut[1] >> 4);
                     rgbOut[2] |= (rgbOut[2] >> 4);
                 }
                 
-                /* Add alpha channel if mask plane present */
+                aByte = 255;
                 if (picture->bmhd->masking == mskHasMask) {
-                    rgbOut[3] = alphaValues[col];
+                    aByte = alphaValues[col];
+                } else if (picture->bmhd->masking == mskHasTransparentColor
+                    && pixelIndex == transIdx) {
+                    aByte = 0;
+                }
+                if (wantAlpha) {
+                    rgbOut[3] = aByte;
                     rgbOut += 4;
                 } else {
                     rgbOut += 3;
@@ -1675,6 +2187,21 @@ LONG DecodeILBM(struct IFFPicture *picture)
             }
             
             FreeMem(pixelIndices, width);
+        }
+    }
+    
+    if (picture->bmhd->masking == mskLasso && wantAlpha && picture->paletteIndices) {
+        UBYTE *lassoBuf;
+        lassoBuf = (UBYTE *)AllocMem((ULONG)width * (ULONG)height, MEMF_PUBLIC | MEMF_CLEAR);
+        if (lassoBuf) {
+            ilbm_lasso_alpha(lassoBuf, picture->paletteIndices, width, height,
+                picture->bmhd->transparentColor);
+            rgbOut = picture->pixelData;
+            pixCount = (ULONG)width * (ULONG)height;
+            for (pi = 0; pi < pixCount; pi++) {
+                rgbOut[pi * 4U + 3U] = lassoBuf[pi];
+            }
+            FreeMem(lassoBuf, (ULONG)width * (ULONG)height);
         }
     }
     
@@ -1721,10 +2248,21 @@ LONG DecodeHAM(struct IFFPicture *picture)
     BOOL mpalOn;
     struct IFFMultipaletteState mpst;
     const UBYTE *hamPal;
+    UBYTE *alphaValues;
+    BOOL wantAlpha;
+    BOOL hamSingleBit;
+    UBYTE aByte;
+    UBYTE transHAM;
+    UBYTE *lassoIdxBuf;
+    ULONG lassoPos;
+    ULONG pixCount;
+    ULONG pi;
     
     workPal = NULL;
     mpalOn = FALSE;
     hamPal = NULL;
+    alphaValues = NULL;
+    lassoIdxBuf = NULL;
     
     if (!picture || !picture->bmhd) {
         SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing BMHD for HAM decoding");
@@ -1736,16 +2274,36 @@ LONG DecodeHAM(struct IFFPicture *picture)
     depth = picture->bmhd->nPlanes;
     rowBytes = RowBytes(width);
     
-    /* HAM requires at least 6 planes (4 for color + 2 for HAM codes) */
-    if (depth < 6) {
-        SetIFFPictureError(picture, IFFPICTURE_INVALID, "HAM requires at least 6 planes");
+    hamSingleBit = FALSE;
+    if (depth == 5 || depth == 7) {
+        hamSingleBit = TRUE;
+    } else if (depth < 6) {
+        SetIFFPictureError(picture, IFFPICTURE_INVALID, "HAM requires 5, 6, 7, or more planes");
         return RETURN_FAIL;
     }
     
-    hambits = depth - 2; /* Bits used for index/value */
-    hammask = (1 << hambits) - 1; /* Mask for lower bits */
-    hamshift = 8 - hambits; /* Shift amount */
-    hammask2 = (1 << hamshift) - 1; /* Mask for upper bits */
+    if (hamSingleBit) {
+        hambits = (UBYTE)(depth - 1U);
+    } else {
+        hambits = (UBYTE)(depth - 2U);
+    }
+    if (hambits > 7) {
+        hambits = 7;
+    }
+    hammask = (UBYTE)((1U << hambits) - 1U);
+    hamshift = (UBYTE)(8U - hambits);
+    hammask2 = (UBYTE)((1U << hamshift) - 1U);
+    
+    wantAlpha = FALSE;
+    if (picture->bmhd->masking == mskHasMask
+        || picture->bmhd->masking == mskHasTransparentColor
+        || picture->bmhd->masking == mskLasso) {
+        wantAlpha = TRUE;
+        picture->hasAlpha = TRUE;
+    } else {
+        picture->hasAlpha = FALSE;
+    }
+    transHAM = (UBYTE)(picture->bmhd->transparentColor & 0xFFU);
     
     if (picture->cmap && picture->cmap->data) {
         cmapData = picture->cmap->data;
@@ -1762,9 +2320,36 @@ LONG DecodeHAM(struct IFFPicture *picture)
         return RETURN_FAIL;
     }
     
+    if (picture->bmhd->masking == mskHasMask) {
+        alphaValues = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+        if (!alphaValues) {
+            FreeMem(planeBuffer, rowBytes);
+            SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate HAM alpha buffer");
+            return RETURN_FAIL;
+        }
+    }
+    
+    if (picture->bmhd->masking == mskLasso) {
+        lassoIdxBuf = (UBYTE *)AllocMem((ULONG)width * (ULONG)height, MEMF_PUBLIC | MEMF_CLEAR);
+        if (!lassoIdxBuf) {
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
+            FreeMem(planeBuffer, rowBytes);
+            SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate HAM lasso buffer");
+            return RETURN_FAIL;
+        }
+    }
+    
     /* ILBM compression 2 (Column-wise ByteRun1): pre-decode entire BODY */
     if (picture->bmhd->compression == cmpByteRun1Column) {
         if (PrepareBodyDecodeBufferColumnWise(picture) != RETURN_OK) {
+            if (lassoIdxBuf) {
+                FreeMem(lassoIdxBuf, (ULONG)width * (ULONG)height);
+            }
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
             FreeMem(planeBuffer, rowBytes);
             return RETURN_FAIL;
         }
@@ -1772,6 +2357,12 @@ LONG DecodeHAM(struct IFFPicture *picture)
     
     if (picture->bmhd->compression == cmpByteRun1) {
         if (PrepareBodyDecodeBufferRowMajor(picture) != RETURN_OK) {
+            if (lassoIdxBuf) {
+                FreeMem(lassoIdxBuf, (ULONG)width * (ULONG)height);
+            }
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
             FreeMem(planeBuffer, rowBytes);
             return RETURN_FAIL;
         }
@@ -1780,6 +2371,12 @@ LONG DecodeHAM(struct IFFPicture *picture)
     if (IFFMultipalette_Active(picture)) {
         workPal = (UBYTE *)AllocMem(768, MEMF_PUBLIC | MEMF_CLEAR);
         if (!workPal) {
+            if (lassoIdxBuf) {
+                FreeMem(lassoIdxBuf, (ULONG)width * (ULONG)height);
+            }
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
             FreeMem(planeBuffer, rowBytes);
             SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate multipalette buffer");
             return RETURN_FAIL;
@@ -1798,6 +2395,12 @@ LONG DecodeHAM(struct IFFPicture *picture)
             if (workPal) {
                 FreeMem(workPal, 768);
             }
+            if (lassoIdxBuf) {
+                FreeMem(lassoIdxBuf, (ULONG)width * (ULONG)height);
+            }
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
             FreeMem(planeBuffer, rowBytes);
             SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate pixel values");
             return RETURN_FAIL;
@@ -1811,7 +2414,7 @@ LONG DecodeHAM(struct IFFPicture *picture)
             hamPal = cmapData;
         }
         
-        /* Read all planes for this row */
+        /* Read all HAM color planes for this row */
         for (plane = 0; plane < depth; plane++) {
             bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
             if (bytesRead != (LONG)rowBytes) {
@@ -1819,67 +2422,154 @@ LONG DecodeHAM(struct IFFPicture *picture)
                 if (workPal) {
                     FreeMem(workPal, 768);
                 }
+                if (lassoIdxBuf) {
+                    FreeMem(lassoIdxBuf, (ULONG)width * (ULONG)height);
+                }
+                if (alphaValues) {
+                    FreeMem(alphaValues, width);
+                }
                 FreeMem(planeBuffer, rowBytes);
                 SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
                 return RETURN_FAIL;
             }
-            /* Extract bits from this plane (optimized) */
             ExtractBitsFromPlane(planeBuffer, pixelValues, width, rowBytes, plane);
         }
         
+        if (picture->bmhd->masking == mskHasMask) {
+            bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+            if (bytesRead != (LONG)rowBytes) {
+                FreeMem(pixelValues, width);
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
+                if (lassoIdxBuf) {
+                    FreeMem(lassoIdxBuf, (ULONG)width * (ULONG)height);
+                }
+                FreeMem(alphaValues, width);
+                FreeMem(planeBuffer, rowBytes);
+                SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read HAM mask plane");
+                return RETURN_FAIL;
+            }
+            ExtractAlphaFromPlane(planeBuffer, alphaValues, width, rowBytes);
+        }
+        
         /* Decode HAM pixels */
-        r = g = b = 0; /* Initialize to black */
+        r = g = b = 0;
         for (col = 0; col < width; col++) {
             pixelValue = pixelValues[col];
-            hamCode = (pixelValue >> hambits) & 0x03; /* Top 2 bits */
-            hamIndex = pixelValue & hammask; /* Lower bits */
+            if (hamSingleBit) {
+                hamCode = (UBYTE)((pixelValue >> hambits) & 1U);
+                hamIndex = (UBYTE)(pixelValue & hammask);
+            } else {
+                hamCode = (UBYTE)((pixelValue >> hambits) & 3U);
+                hamIndex = (UBYTE)(pixelValue & hammask);
+            }
             
-            switch (hamCode) {
-                case HAMCODE_CMAP:
-                    /* Look up color from CMAP */
+            if (hamSingleBit) {
+                if (hamCode == 0) {
                     if (hamPal && hamIndex < maxColors) {
                         r = hamPal[hamIndex * 3];
                         g = hamPal[hamIndex * 3 + 1];
                         b = hamPal[hamIndex * 3 + 2];
-                        
-                        /* Handle 4-bit palette scaling */
                         if (picture->cmap && picture->cmap->is4Bit && !mpalOn) {
                             r |= (r >> 4);
                             g |= (g >> 4);
                             b |= (b >> 4);
                         }
                     } else {
-                        /* No CMAP, use grayscale */
-                        r = g = b = (hamIndex << hamshift) | ((hamIndex << hamshift) >> hambits);
+                        r = g = b = (UBYTE)((hamIndex << hamshift) | ((hamIndex << hamshift) >> hambits));
                     }
-                    break;
-                    
-                case HAMCODE_BLUE:
-                    /* Modify blue component */
-                    b = ((b & hammask2) | (hamIndex << hamshift));
-                    break;
-                    
-                case HAMCODE_RED:
-                    /* Modify red component */
-                    r = ((r & hammask2) | (hamIndex << hamshift));
-                    break;
-                    
-                case HAMCODE_GREEN:
-                    /* Modify green component */
-                    g = ((g & hammask2) | (hamIndex << hamshift));
-                    break;
+                } else {
+                    b = (UBYTE)((b & hammask2) | (hamIndex << hamshift));
+                }
+            } else {
+                switch (hamCode) {
+                    case HAMCODE_CMAP:
+                        if (hamPal && hamIndex < maxColors) {
+                            r = hamPal[hamIndex * 3];
+                            g = hamPal[hamIndex * 3 + 1];
+                            b = hamPal[hamIndex * 3 + 2];
+                            if (picture->cmap && picture->cmap->is4Bit && !mpalOn) {
+                                r |= (r >> 4);
+                                g |= (g >> 4);
+                                b |= (b >> 4);
+                            }
+                        } else {
+                            r = g = b = (UBYTE)((hamIndex << hamshift) | ((hamIndex << hamshift) >> hambits));
+                        }
+                        break;
+                    case HAMCODE_BLUE:
+                        b = (UBYTE)((b & hammask2) | (hamIndex << hamshift));
+                        break;
+                    case HAMCODE_RED:
+                        r = (UBYTE)((r & hammask2) | (hamIndex << hamshift));
+                        break;
+                    case HAMCODE_GREEN:
+                        g = (UBYTE)((g & hammask2) | (hamIndex << hamshift));
+                        break;
+                }
             }
             
-            /* Write RGB output */
+            if (lassoIdxBuf) {
+                lassoPos = (ULONG)row * (ULONG)width + (ULONG)col;
+                if (!hamSingleBit) {
+                    if (hamCode == HAMCODE_CMAP) {
+                        lassoIdxBuf[lassoPos] = hamIndex;
+                    } else {
+                        lassoIdxBuf[lassoPos] = 0xFFU;
+                    }
+                } else {
+                    if (hamCode == 0) {
+                        lassoIdxBuf[lassoPos] = hamIndex;
+                    } else {
+                        lassoIdxBuf[lassoPos] = 0xFFU;
+                    }
+                }
+            }
+            
             rgbOut[0] = r;
             rgbOut[1] = g;
             rgbOut[2] = b;
-            rgbOut += 3;
+            aByte = 255;
+            if (picture->bmhd->masking == mskHasMask) {
+                aByte = alphaValues[col];
+            } else if (picture->bmhd->masking == mskHasTransparentColor) {
+                if ((!hamSingleBit && hamCode == HAMCODE_CMAP && hamIndex == transHAM)
+                    || (hamSingleBit && hamCode == 0 && hamIndex == transHAM)) {
+                    aByte = 0;
+                }
+            }
+            if (wantAlpha) {
+                rgbOut[3] = aByte;
+                rgbOut += 4;
+            } else {
+                rgbOut += 3;
+            }
         }
         
         FreeMem(pixelValues, width);
     }
     
+    if (picture->bmhd->masking == mskLasso && wantAlpha && lassoIdxBuf) {
+        UBYTE *lassoTmp;
+        lassoTmp = (UBYTE *)AllocMem((ULONG)width * (ULONG)height, MEMF_PUBLIC | MEMF_CLEAR);
+        if (lassoTmp) {
+            ilbm_lasso_alpha(lassoTmp, lassoIdxBuf, width, height, picture->bmhd->transparentColor);
+            rgbOut = picture->pixelData;
+            pixCount = (ULONG)width * (ULONG)height;
+            for (pi = 0; pi < pixCount; pi++) {
+                rgbOut[pi * 4U + 3U] = lassoTmp[pi];
+            }
+            FreeMem(lassoTmp, (ULONG)width * (ULONG)height);
+        }
+    }
+    
+    if (lassoIdxBuf) {
+        FreeMem(lassoIdxBuf, (ULONG)width * (ULONG)height);
+    }
+    if (alphaValues) {
+        FreeMem(alphaValues, width);
+    }
     FreeMem(planeBuffer, rowBytes);
     if (workPal) {
         FreeMem(workPal, 768);
@@ -1903,6 +2593,7 @@ LONG DecodeEHB(struct IFFPicture *picture)
     UWORD rowBytes;
     UBYTE *planeBuffer;
     UBYTE *rgbOut;
+    UBYTE *paletteOut;
     UWORD row, plane, col;
     UBYTE pixelIndex;
     LONG bytesRead;
@@ -1912,9 +2603,18 @@ LONG DecodeEHB(struct IFFPicture *picture)
     BOOL mpalOn;
     struct IFFMultipaletteState mpst;
     const UBYTE *palSrc;
+    UBYTE *alphaValues;
+    BOOL wantAlpha;
+    UBYTE aByte;
+    UBYTE transIdx;
+    ULONG pixCount;
+    ULONG pi;
+    UBYTE *lassoTmp;
     
     workPal = NULL;
     mpalOn = FALSE;
+    alphaValues = NULL;
+    paletteOut = NULL;
     
     if (!picture || !picture->bmhd || !picture->cmap || !picture->cmap->data) {
         SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing BMHD or CMAP for EHB decoding");
@@ -1934,24 +2634,75 @@ LONG DecodeEHB(struct IFFPicture *picture)
         return RETURN_FAIL;
     }
     
+    wantAlpha = FALSE;
+    if (picture->bmhd->masking == mskHasMask
+        || picture->bmhd->masking == mskHasTransparentColor
+        || picture->bmhd->masking == mskLasso) {
+        wantAlpha = TRUE;
+        picture->hasAlpha = TRUE;
+    } else {
+        picture->hasAlpha = FALSE;
+    }
+    transIdx = (UBYTE)(picture->bmhd->transparentColor & 0xFFU);
+    
+    if (picture->paletteIndices) {
+        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+        picture->paletteIndices = NULL;
+        picture->paletteIndicesSize = 0;
+    }
+    picture->paletteIndicesSize = (ULONG)width * (ULONG)height;
+    picture->paletteIndices = (UBYTE *)AllocMem(picture->paletteIndicesSize, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!picture->paletteIndices) {
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate EHB palette indices");
+        return RETURN_FAIL;
+    }
+    paletteOut = picture->paletteIndices;
+    
     /* Allocate buffer for one plane row */
     planeBuffer = (UBYTE *)AllocMem(rowBytes, MEMF_PUBLIC | MEMF_CLEAR);
     if (!planeBuffer) {
+        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+        picture->paletteIndices = NULL;
+        picture->paletteIndicesSize = 0;
         SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate plane buffer");
         return RETURN_FAIL;
+    }
+    
+    if (picture->bmhd->masking == mskHasMask) {
+        alphaValues = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+        if (!alphaValues) {
+            FreeMem(planeBuffer, rowBytes);
+            FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+            picture->paletteIndices = NULL;
+            picture->paletteIndicesSize = 0;
+            SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate EHB alpha buffer");
+            return RETURN_FAIL;
+        }
     }
     
     /* ILBM compression 2 (Column-wise ByteRun1): pre-decode entire BODY */
     if (picture->bmhd->compression == cmpByteRun1Column) {
         if (PrepareBodyDecodeBufferColumnWise(picture) != RETURN_OK) {
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
             FreeMem(planeBuffer, rowBytes);
+            FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+            picture->paletteIndices = NULL;
+            picture->paletteIndicesSize = 0;
             return RETURN_FAIL;
         }
     }
     
     if (picture->bmhd->compression == cmpByteRun1) {
         if (PrepareBodyDecodeBufferRowMajor(picture) != RETURN_OK) {
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
             FreeMem(planeBuffer, rowBytes);
+            FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+            picture->paletteIndices = NULL;
+            picture->paletteIndicesSize = 0;
             return RETURN_FAIL;
         }
     }
@@ -1959,7 +2710,13 @@ LONG DecodeEHB(struct IFFPicture *picture)
     if (IFFMultipalette_Active(picture)) {
         workPal = (UBYTE *)AllocMem(768, MEMF_PUBLIC | MEMF_CLEAR);
         if (!workPal) {
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
             FreeMem(planeBuffer, rowBytes);
+            FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+            picture->paletteIndices = NULL;
+            picture->paletteIndicesSize = 0;
             SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate multipalette buffer");
             return RETURN_FAIL;
         }
@@ -1977,7 +2734,13 @@ LONG DecodeEHB(struct IFFPicture *picture)
             if (workPal) {
                 FreeMem(workPal, 768);
             }
+            if (alphaValues) {
+                FreeMem(alphaValues, width);
+            }
             FreeMem(planeBuffer, rowBytes);
+            FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+            picture->paletteIndices = NULL;
+            picture->paletteIndicesSize = 0;
             SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate pixel indices");
             return RETURN_FAIL;
         }
@@ -1989,7 +2752,6 @@ LONG DecodeEHB(struct IFFPicture *picture)
             palSrc = cmapData;
         }
         
-        /* Read all planes for this row */
         for (plane = 0; plane < depth; plane++) {
             bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
             if (bytesRead != (LONG)rowBytes) {
@@ -1997,48 +2759,95 @@ LONG DecodeEHB(struct IFFPicture *picture)
                 if (workPal) {
                     FreeMem(workPal, 768);
                 }
+                if (alphaValues) {
+                    FreeMem(alphaValues, width);
+                }
                 FreeMem(planeBuffer, rowBytes);
+                FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                picture->paletteIndices = NULL;
+                picture->paletteIndicesSize = 0;
                 SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read plane data");
                 return RETURN_FAIL;
             }
-            /* Extract bits from this plane to build pixel indices (optimized) */
             ExtractBitsFromPlane(planeBuffer, pixelIndices, width, rowBytes, plane);
         }
         
-        /* Convert pixel indices to RGB using CMAP, applying EHB scaling */
+        if (picture->bmhd->masking == mskHasMask) {
+            bytesRead = ReadBodyRow(picture, planeBuffer, rowBytes);
+            if (bytesRead != (LONG)rowBytes) {
+                FreeMem(pixelIndices, width);
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
+                FreeMem(alphaValues, width);
+                FreeMem(planeBuffer, rowBytes);
+                FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                picture->paletteIndices = NULL;
+                picture->paletteIndicesSize = 0;
+                SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read EHB mask plane");
+                return RETURN_FAIL;
+            }
+            ExtractAlphaFromPlane(planeBuffer, alphaValues, width, rowBytes);
+        }
+        
         for (col = 0; col < width; col++) {
             pixelIndex = pixelIndices[col];
-            
-            /* Clamp to valid CMAP range */
             if (pixelIndex >= maxColors) {
                 pixelIndex = (UBYTE)(maxColors - 1);
             }
+            *paletteOut++ = pixelIndex;
             
-            /* Look up RGB from CMAP */
             rgbOut[0] = palSrc[pixelIndex * 3];
             rgbOut[1] = palSrc[pixelIndex * 3 + 1];
             rgbOut[2] = palSrc[pixelIndex * 3 + 2];
             
-            /* Handle 4-bit palette scaling if needed */
             if (picture->cmap->is4Bit && !mpalOn) {
                 rgbOut[0] |= (rgbOut[0] >> 4);
                 rgbOut[1] |= (rgbOut[1] >> 4);
                 rgbOut[2] |= (rgbOut[2] >> 4);
             }
             
-            /* Apply EHB scaling: colors 32-63 are half-brightness versions of 0-31 */
             if (pixelIndex >= 32) {
                 rgbOut[0] = rgbOut[0] >> 1;
                 rgbOut[1] = rgbOut[1] >> 1;
                 rgbOut[2] = rgbOut[2] >> 1;
             }
             
-            rgbOut += 3;
+            aByte = 255;
+            if (picture->bmhd->masking == mskHasMask) {
+                aByte = alphaValues[col];
+            } else if (picture->bmhd->masking == mskHasTransparentColor
+                && pixelIndex == transIdx) {
+                aByte = 0;
+            }
+            if (wantAlpha) {
+                rgbOut[3] = aByte;
+                rgbOut += 4;
+            } else {
+                rgbOut += 3;
+            }
         }
         
         FreeMem(pixelIndices, width);
     }
     
+    if (picture->bmhd->masking == mskLasso && wantAlpha && picture->paletteIndices) {
+        lassoTmp = (UBYTE *)AllocMem((ULONG)width * (ULONG)height, MEMF_PUBLIC | MEMF_CLEAR);
+        if (lassoTmp) {
+            ilbm_lasso_alpha(lassoTmp, picture->paletteIndices, width, height,
+                picture->bmhd->transparentColor);
+            rgbOut = picture->pixelData;
+            pixCount = (ULONG)width * (ULONG)height;
+            for (pi = 0; pi < pixCount; pi++) {
+                rgbOut[pi * 4U + 3U] = lassoTmp[pi];
+            }
+            FreeMem(lassoTmp, (ULONG)width * (ULONG)height);
+        }
+    }
+    
+    if (alphaValues) {
+        FreeMem(alphaValues, width);
+    }
     FreeMem(planeBuffer, rowBytes);
     if (workPal) {
         FreeMem(workPal, 768);
@@ -2455,7 +3264,9 @@ LONG DecodePBM(struct IFFPicture *picture)
 {
     UWORD width, height;
     UBYTE *rowBuffer;
+    UBYTE *maskRow;
     UBYTE *rgbOut;
+    UBYTE *paletteOut;
     UWORD row, col;
     UBYTE pixelIndex;
     LONG bytesRead;
@@ -2465,9 +3276,17 @@ LONG DecodePBM(struct IFFPicture *picture)
     BOOL mpalOn;
     struct IFFMultipaletteState mpst;
     const UBYTE *palSrc;
+    BOOL wantAlpha;
+    UBYTE aByte;
+    UBYTE transIdx;
+    ULONG pixCount;
+    ULONG pi;
+    UBYTE *lassoTmp;
     
     workPal = NULL;
     mpalOn = FALSE;
+    maskRow = NULL;
+    paletteOut = NULL;
     
     if (!picture || !picture->bmhd) {
         SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing BMHD for PBM decoding");
@@ -2477,7 +3296,6 @@ LONG DecodePBM(struct IFFPicture *picture)
     width = picture->bmhd->w;
     height = picture->bmhd->h;
     
-    /* PBM requires CMAP */
     if (!picture->cmap || !picture->cmap->data) {
         SetIFFPictureError(picture, IFFPICTURE_INVALID, "Missing CMAP for PBM decoding");
         return RETURN_FAIL;
@@ -2486,17 +3304,61 @@ LONG DecodePBM(struct IFFPicture *picture)
     cmapData = picture->cmap->data;
     maxColors = picture->cmap->numcolors;
     
-    /* Allocate buffer for one row */
+    wantAlpha = FALSE;
+    if (picture->bmhd->masking == mskHasMask
+        || picture->bmhd->masking == mskHasTransparentColor
+        || picture->bmhd->masking == mskLasso) {
+        wantAlpha = TRUE;
+        picture->hasAlpha = TRUE;
+    } else {
+        picture->hasAlpha = FALSE;
+    }
+    transIdx = (UBYTE)(picture->bmhd->transparentColor & 0xFFU);
+    
+    if (picture->paletteIndices) {
+        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+        picture->paletteIndices = NULL;
+        picture->paletteIndicesSize = 0;
+    }
+    picture->paletteIndicesSize = (ULONG)width * (ULONG)height;
+    picture->paletteIndices = (UBYTE *)AllocMem(picture->paletteIndicesSize, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!picture->paletteIndices) {
+        SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate PBM palette indices");
+        return RETURN_FAIL;
+    }
+    paletteOut = picture->paletteIndices;
+    
     rowBuffer = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
     if (!rowBuffer) {
+        FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+        picture->paletteIndices = NULL;
+        picture->paletteIndicesSize = 0;
         SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate row buffer");
         return RETURN_FAIL;
+    }
+    
+    if (picture->bmhd->masking == mskHasMask) {
+        maskRow = (UBYTE *)AllocMem(width, MEMF_PUBLIC | MEMF_CLEAR);
+        if (!maskRow) {
+            FreeMem(rowBuffer, width);
+            FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+            picture->paletteIndices = NULL;
+            picture->paletteIndicesSize = 0;
+            SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate PBM mask row");
+            return RETURN_FAIL;
+        }
     }
     
     if (IFFMultipalette_Active(picture)) {
         workPal = (UBYTE *)AllocMem(768, MEMF_PUBLIC | MEMF_CLEAR);
         if (!workPal) {
+            if (maskRow) {
+                FreeMem(maskRow, width);
+            }
             FreeMem(rowBuffer, width);
+            FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+            picture->paletteIndices = NULL;
+            picture->paletteIndicesSize = 0;
             SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate multipalette buffer");
             return RETURN_FAIL;
         }
@@ -2506,7 +3368,6 @@ LONG DecodePBM(struct IFFPicture *picture)
     
     rgbOut = picture->pixelData;
     
-    /* Process each row */
     for (row = 0; row < height; row++) {
         if (mpalOn) {
             IFFMultipalette_ApplyScanline(&mpst, row, workPal);
@@ -2515,55 +3376,110 @@ LONG DecodePBM(struct IFFPicture *picture)
             palSrc = cmapData;
         }
         
-        /* Read/decompress row data */
         if (picture->bmhd->compression == cmpByteRun1) {
             bytesRead = DecompressByteRun1(picture->iff, rowBuffer, width);
             if (bytesRead != width) {
                 if (workPal) {
                     FreeMem(workPal, 768);
                 }
+                if (maskRow) {
+                    FreeMem(maskRow, width);
+                }
                 FreeMem(rowBuffer, width);
+                FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                picture->paletteIndices = NULL;
+                picture->paletteIndicesSize = 0;
                 SetIFFPictureError(picture, IFFPICTURE_BADFILE, "ByteRun1 decompression failed");
                 return RETURN_FAIL;
             }
         } else {
-            /* Uncompressed */
             bytesRead = ReadChunkBytes(picture->iff, rowBuffer, width);
             if (bytesRead != width) {
                 if (workPal) {
                     FreeMem(workPal, 768);
                 }
+                if (maskRow) {
+                    FreeMem(maskRow, width);
+                }
                 FreeMem(rowBuffer, width);
+                FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                picture->paletteIndices = NULL;
+                picture->paletteIndicesSize = 0;
                 SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read row data");
                 return RETURN_FAIL;
             }
         }
         
-        /* Convert pixel indices to RGB using CMAP */
+        if (picture->bmhd->masking == mskHasMask) {
+            if (picture->bmhd->compression == cmpByteRun1) {
+                bytesRead = DecompressByteRun1(picture->iff, maskRow, width);
+            } else {
+                bytesRead = ReadChunkBytes(picture->iff, maskRow, width);
+            }
+            if (bytesRead != width) {
+                if (workPal) {
+                    FreeMem(workPal, 768);
+                }
+                FreeMem(maskRow, width);
+                FreeMem(rowBuffer, width);
+                FreeMem(picture->paletteIndices, picture->paletteIndicesSize);
+                picture->paletteIndices = NULL;
+                picture->paletteIndicesSize = 0;
+                SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to read PBM mask row");
+                return RETURN_FAIL;
+            }
+        }
+        
         for (col = 0; col < width; col++) {
             pixelIndex = rowBuffer[col];
-            
-            /* Clamp to valid CMAP range */
             if (pixelIndex >= maxColors) {
                 pixelIndex = (UBYTE)(maxColors - 1);
             }
+            *paletteOut++ = pixelIndex;
             
-            /* Look up RGB from CMAP */
-            rgbOut[0] = palSrc[pixelIndex * 3];     /* R */
-            rgbOut[1] = palSrc[pixelIndex * 3 + 1]; /* G */
-            rgbOut[2] = palSrc[pixelIndex * 3 + 2]; /* B */
+            rgbOut[0] = palSrc[pixelIndex * 3];
+            rgbOut[1] = palSrc[pixelIndex * 3 + 1];
+            rgbOut[2] = palSrc[pixelIndex * 3 + 2];
             
-            /* Handle 4-bit palette scaling if needed */
             if (picture->cmap->is4Bit && !mpalOn) {
                 rgbOut[0] |= (rgbOut[0] >> 4);
                 rgbOut[1] |= (rgbOut[1] >> 4);
                 rgbOut[2] |= (rgbOut[2] >> 4);
             }
             
-            rgbOut += 3;
+            aByte = 255;
+            if (picture->bmhd->masking == mskHasMask) {
+                aByte = maskRow[col];
+            } else if (picture->bmhd->masking == mskHasTransparentColor
+                && pixelIndex == transIdx) {
+                aByte = 0;
+            }
+            if (wantAlpha) {
+                rgbOut[3] = aByte;
+                rgbOut += 4;
+            } else {
+                rgbOut += 3;
+            }
         }
     }
     
+    if (picture->bmhd->masking == mskLasso && wantAlpha && picture->paletteIndices) {
+        lassoTmp = (UBYTE *)AllocMem((ULONG)width * (ULONG)height, MEMF_PUBLIC | MEMF_CLEAR);
+        if (lassoTmp) {
+            ilbm_lasso_alpha(lassoTmp, picture->paletteIndices, width, height,
+                picture->bmhd->transparentColor);
+            rgbOut = picture->pixelData;
+            pixCount = (ULONG)width * (ULONG)height;
+            for (pi = 0; pi < pixCount; pi++) {
+                rgbOut[pi * 4U + 3U] = lassoTmp[pi];
+            }
+            FreeMem(lassoTmp, (ULONG)width * (ULONG)height);
+        }
+    }
+    
+    if (maskRow) {
+        FreeMem(maskRow, width);
+    }
     FreeMem(rowBuffer, width);
     if (workPal) {
         FreeMem(workPal, 768);

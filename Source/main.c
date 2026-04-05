@@ -10,7 +10,7 @@
 
 /* Amiga version strings - kept as static to prevent "unreachable" warnings */
 /* These are referenced by the linker/loader, not by code */
-static const char *verstag = "$VER: iff2png 1.6 (5/4/2026)";
+static const char *verstag = "$VER: iff2png 1.7 (6/4/2026)";
 static const char *stack_cookie = "$STACK: 4096";
 long oslibversion  = 40L; 
 

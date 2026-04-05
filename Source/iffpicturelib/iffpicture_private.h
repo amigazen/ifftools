@@ -43,6 +43,11 @@
 #define ID_DEST    0x44455354UL  /* 'DEST' - destination merge */
 #define ID_SPRT    0x53505254UL  /* 'SPRT' - sprite precedence */
 #define ID_CRNG    0x43524E47UL  /* 'CRNG' - color range */
+#define ID_CCRT    0x43435254UL  /* 'CCRT' - Graphicraft color cycle timing */
+#define ID_CAT     0x43415420UL  /* 'CAT ' - concatenation of FORMs */
+#define ID_LIST    0x4C495354UL  /* 'LIST' - grouped FORMs + PROP */
+#define ID_DGVW    0x44475657UL  /* 'DGVW' - Digi-View (often with 21-plane ILBM) */
+#define ID_DYCP    0x44594350UL  /* 'DYCP' - dynamic color (stored; decode not applied) */
 #define ID_COPYRIGHT 0x28632920UL  /* '(c) ' - copyright text */
 #define ID_AUTH    0x41555448UL  /* 'AUTH' - author text */
 #define ID_ANNO    0x414E4E4FUL  /* 'ANNO' - annotation text */
@@ -127,6 +132,15 @@ struct IFFPictureMeta {
     struct CRange *crng;                /* CRNG chunk (first instance) */
     ULONG crngCount;                    /* Number of CRNG chunks */
     struct CRange *crngArray;           /* Array of all CRNG chunks */
+    struct CycleInfo *ccrt;             /* CCRT chunk (first instance) */
+    ULONG ccrtCount;                    /* Number of CCRT chunks */
+    struct CycleInfo *ccrtArray;        /* Array of all CCRT chunks */
+    UBYTE *clut;                        /* CLUT chunk raw payload (if present) */
+    ULONG clutSize;
+    UBYTE *dgvw;                        /* DGVW chunk raw payload (if present) */
+    ULONG dgvwSize;
+    UBYTE *dycp;                        /* DYCP chunk raw payload (if present) */
+    ULONG dycpSize;
     STRPTR copyright;                   /* Copyright chunk */
     ULONG copyrightSize;                /* Size of copyright string (including null) */
     STRPTR author;                      /* AUTH chunk */
@@ -206,6 +220,7 @@ struct IFFPicture {
     BOOL isIndexed;
     BOOL isGrayscale;
     BOOL isFramestore;   /* TRUE if NewTek Video Toaster framestore (ILBM 16-plane + PLTP 6/7) */
+    BOOL isDigiViewRgb;  /* TRUE if 21-plane Digi-View RGB body and/or DGVW chunk present */
     
     /* Private members - internal to library */
     struct IFFHandle *iff;

@@ -33,8 +33,12 @@ iff2png is designed to convert IFF bitmap images to PNG format while preserving 
 @{"Usage Information" LINK "usage"}
 
 Key Features:
-? Supports all major IFF formats (ILBM, PBM, RGBN, RGB8, DEEP, ACBM, FAXX)
-? Handles 24-bit ILBM (deep ILBM with true-color RGB)
+? Supports all major IFF formats (ILBM, PBM, RGBN, RGB8, DEEP, ACBM, FAXX, YUVN)
+? Handles 24-bit ILBM (deep ILBM with true-color RGB); optional 32-plane ILBM to RGBA; greyscale ILBM without CMAP
+? NewTek Digi-View 21-plane RGB ILBM bodies; DGVW chunk;
+? ILBM: DEST destination merge, BMHD mask plane, transparent colour, lasso-style masking; ByteRun1 column mode; PackBits count 128 (129 repeats) per common encoders
+? Top-level CAT / LIST: first supported picture FORM is loaded (one image per iff2png run)
+? CCRT (Graphicraft colour-cycle timing), CLUT, DGVW, DYCP chunks (CLUT/DYCP raw for tools)
 ? Automatic optimal PNG encoding based on source properties
 ? Preserves transparency and alpha channels
 ? Supports HAM (Hold And Modify) and EHB (Extra Half-Brite) modes
@@ -129,10 +133,10 @@ iff2png supports all major IFF image formats used on Amiga systems.
 @{"PNG Output" LINK "png"}
 
 ILBM (InterLeaved BitMap):
-Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Optional property chunks PCHG, SHAM, and CTBL supply per-scanline or static multipalette data; when present, indexed ILBM (and PBM) decode applies them before each scanline's BODY data (SHAM takes precedence over PCHG when both exist). Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue).
+Standard Amiga bitmap format with interleaved bitplanes. Supports HAM (Hold And Modify), EHB (Extra Half-Brite), and various bitplane counts. Optional property chunks PCHG, SHAM, and CTBL supply per-scanline or static multipalette data; when present, indexed ILBM (and PBM) decode applies them before each scanline's BODY data (SHAM takes precedence over PCHG when both exist). Also supports 24-bit ILBM (deep ILBM with 24 bitplanes for true-color RGB, where bitplanes 0-7 represent Red, 8-15 represent Green, and 16-23 represent Blue), optional 32-plane bodies to RGBA, greyscale without CMAP, NewTek Digi-View 21-plane RGB interleaved bodies, DEST merge remapping where present, BMHD mask / transparent colour / lasso handling, and ByteRun1 including column-wise packing and repeat-length 128 compatibility. Optional chunks CCRT (colour-cycle timing), CLUT, DGVW, DYCP are parsed for the library readers ReadAllCCRT, ReadCLUT, ReadDGVW, ReadDYCP. Files wrapped in CAT or LIST: the first supported picture FORM in the stream is used.
 
 PBM (Packed BitMap):
-Similar to ILBM but with packed pixels (one byte per pixel) instead of bitplanes. May carry the same optional PCHG/SHAM/CTBL multipalette property chunks as ILBM. Note: This is not the same as NetPBM.
+Similar to ILBM but with packed pixels (one byte per pixel) instead of bitplanes. May carry the same optional PCHG/SHAM/CTBL multipalette property chunks as ILBM; masking and transparency handling align with ILBM where applicable. Note: This is not the same as NetPBM.
 
 RGBN:
 RGB format with N planes (true-color with separate RGB channels). N indicates the number of bits per channel.
@@ -150,7 +154,7 @@ FAXX:
 Facsimile image format using ITU-T T.4 compression (Modified Huffman, Modified READ, Modified Modified READ). Typically black and white images for fax transmission.
 
 YUVN:
-YUV color space format for broadcast television (CCIR-601-2 standard). Note: YUVN support is planned but not yet implemented.
+YUV color space format for broadcast television (CCIR-601-2 standard). Decoded to RGB for PNG when the file uses supported YUVN modes.
 
 For detailed IFF picture format structure, chunk layouts, and decoding algorithms (ILBM, PBM, DEEP, FAXX, YUVN, Video Toaster Framestore, etc.), see the companion guide "IFF Picture Formats.guide" in the same directory.
 
@@ -270,7 +274,6 @@ Invalid IFF File:
 Unsupported Format:
 ? Verify format is one of the supported types
 ? Check if format variant is supported
-? YUVN format is not yet implemented
 
 Memory Errors:
 ? Ensure sufficient system memory available
@@ -350,10 +353,13 @@ CloseIFFPicture():
 Closes the IFF context. Does not close the file handle (caller responsibility).
 
 ParseIFFPicture():
-Parses the IFF file structure and reads property chunks (BMHD, CMAP, CAMG, etc.). For ILBM, PBM, and ACBM, multipalette chunks (PCHG, SHAM, CTBL) are loaded when present.
+Parses the IFF file structure and reads property chunks (BMHD, CMAP, CAMG, etc.). For ILBM, PBM, and ACBM, multipalette chunks (PCHG, SHAM, CTBL) are loaded when present. For ILBM, optional property chunks DGVW, CLUT, DYCP are registered; CCRT instances are collected. If the stream begins with CAT or LIST, parsing advances to the first supported picture FORM (one image per open/parse cycle).
 
 GetImageInfo():
-Returns width, height, flags, and multipaletteChunkId (same meaning as GetMultipaletteChunkId()).
+Returns width, height, flags, multipaletteChunkId (same meaning as GetMultipaletteChunkId()), and isDigiViewRgb (Digi-View RGB ILBM and/or DGVW — see IsDigiViewRgb()).
+
+IsDigiViewRgb():
+TRUE when the picture is treated as NewTek Digi-View RGB (21-plane interleaved body path and/or DGVW chunk present for tooling).
 
 GetMultipaletteChunkId():
 Returns MAKE_ID('S','H','A','M'), MAKE_ID('P','C','H','G'), MAKE_ID('C','T','B','L'), or 0 after load.
@@ -363,6 +369,12 @@ TRUE if a multipalette chunk is driving decode.
 
 GetPaletteIndices():
 After Decode(), library-owned width*height index buffer or NULL.
+
+ReadCCRT() / ReadAllCCRT():
+First CCRT chunk or all CCRT instances (Graphicraft colour-cycle timing).
+
+ReadCLUT() / ReadDGVW() / ReadDYCP():
+Return raw chunk payload and size (library-owned); for host tools — CLUT/DYCP are not applied as dynamic colour engines in decode yet.
 
 DecodeToRGB():
 Decodes the IFF image and converts it to RGB format. Allocates RGB buffer.
@@ -378,6 +390,8 @@ Metadata Functions:
 ? ReadDEST() - Destination merge information
 ? ReadSPRT() - Sprite precedence
 ? ReadCRNG() / ReadAllCRNG() - Color ranges
+? ReadCCRT() / ReadAllCCRT() - Graphicraft colour-cycle timing (CCRT)
+? ReadCLUT() / ReadDGVW() / ReadDYCP() - Raw optional ILBM chunks
 ? ReadCopyright() - Copyright text
 ? ReadAuthor() - Author information
 ? ReadAnnotation() / ReadAllAnnotations() - Annotations
@@ -493,12 +507,6 @@ Development:
 ? Well-documented API
 ? Standard Amiga practices
 
-Community:
-? GitHub: https://github.com/amigazen/ifftools/
-? Web: http://www.amigazen.com/toolkit/
-? Email: toolkit@amigazen.com
-? Pull requests welcome
-
 Reporting Issues:
 ? Include error messages
 ? Provide sample IFF file if possible
@@ -513,6 +521,10 @@ Convert IFF images to PNG format
 History of changes and improvements in iff2png.
 
 @{"Main Index" LINK "main"}
+
+Version 1.7 (6.4.2026):
+? ILBM: Digi-View 21-plane RGB, DEST, extended BMHD masking (mask, transparent colour, lasso), 32-plane RGBA and greyscale paths, PackBits 128 repeat fix
+? CAT / LIST: load first supported picture FORM
 
 Version 1.6 (5.4.2026):
 ? Public multipalette queries: GetMultipaletteChunkId(), IsMultipaletteActive(), GetPaletteIndices()
@@ -552,10 +564,10 @@ Technical:
 ? zlib 1.2.11 integration
 
 Future Plans:
-? YUVN format support
-? Additional metadata chunk types
+? Multi-image export from CAT/LIST (multiple FORMs)
+? IFFPicture write/encode API
+? Deeper use of CLUT/DYCP in raster decode where specified
 ? Performance optimizations
-? Extended format support
 @ENDNODE
 
 @NODE "index" "Index"

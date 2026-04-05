@@ -33,6 +33,7 @@ LONG ReadDCHG(struct IFFPicture *picture);
 LONG ReadTVDC(struct IFFPicture *picture);
 static VOID FreeIFFPictureMeta(struct IFFPictureMeta *meta);
 static BOOL PLTPIsVTFramestore(const UBYTE *pltp);
+static BOOL PictureFormTypeSupported(ULONG formType);
 
 /*
 ** AllocIFFPicture - Allocate a new IFFPicture object
@@ -63,6 +64,7 @@ struct IFFPicture *AllocIFFPicture(VOID)
     picture->isCompressed = FALSE;
     picture->isIndexed = FALSE;
     picture->isGrayscale = FALSE;
+    picture->isDigiViewRgb = FALSE;
     picture->iff = NULL;
     picture->lastError = IFFPICTURE_OK;
     picture->errorString[0] = '\0';
@@ -237,6 +239,18 @@ static VOID FreeIFFPictureMeta(struct IFFPictureMeta *meta)
     }
     if (meta->crngArray) {
         FreeMem(meta->crngArray, meta->crngCount * sizeof(struct CRange));
+    }
+    if (meta->ccrtArray) {
+        FreeMem(meta->ccrtArray, meta->ccrtCount * sizeof(struct CycleInfo));
+    }
+    if (meta->clut) {
+        FreeMem(meta->clut, meta->clutSize);
+    }
+    if (meta->dgvw) {
+        FreeMem(meta->dgvw, meta->dgvwSize);
+    }
+    if (meta->dycp) {
+        FreeMem(meta->dycp, meta->dycpSize);
     }
     if (meta->copyright) {
         FreeMem(meta->copyright, meta->copyrightSize);
@@ -466,6 +480,16 @@ VOID CloseIFFPicture(struct IFFPicture *picture)
 ** Returns: RETURN_OK on success, RETURN_FAIL on error
 ** Follows iffparse.library pattern: ParseIFF
 */
+static BOOL PictureFormTypeSupported(ULONG formType)
+{
+    if (formType == ID_ILBM || formType == ID_PBM || formType == ID_ACBM
+        || formType == ID_RGBN || formType == ID_RGB8 || formType == ID_DEEP
+        || formType == ID_FAXX || formType == ID_YUVN) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
 LONG ParseIFFPicture(struct IFFPicture *picture)
 {
     LONG error;
@@ -479,16 +503,26 @@ LONG ParseIFFPicture(struct IFFPicture *picture)
         return RETURN_FAIL;
     }
     
-    /* First, parse one step to get FORM type */
+    /* Step into the file until we reach a supported picture FORM (skips CAT/LIST wrappers).
+     * Multi-image CAT/LIST: only the first supported FORM is loaded; callers that need every
+     * frame must re-parse the stream or use a different tool (e.g. batch PNG, animation). */
     error = ParseIFF(picture->iff, IFFPARSE_STEP);
     if (error != 0) {
-        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to parse FORM chunk");
+        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Failed to parse IFF container");
         return RETURN_FAIL;
     }
     
     cn = CurrentChunk(picture->iff);
-    if (!cn || cn->cn_ID != ID_FORM) {
-        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "Not a valid IFF FORM file");
+    while (error == 0 && cn != NULL) {
+        if (cn->cn_ID == ID_FORM && PictureFormTypeSupported(cn->cn_Type)) {
+            break;
+        }
+        error = ParseIFF(picture->iff, IFFPARSE_STEP);
+        cn = CurrentChunk(picture->iff);
+    }
+    
+    if (error != 0 || cn == NULL || cn->cn_ID != ID_FORM) {
+        SetIFFPictureError(picture, IFFPICTURE_BADFILE, "No supported picture FORM found");
         return RETURN_FAIL;
     }
     
@@ -522,6 +556,9 @@ LONG ParseIFFPicture(struct IFFPicture *picture)
         PropChunk(picture->iff, formType, ID_PCHG);
         PropChunk(picture->iff, formType, ID_SHAM);
         PropChunk(picture->iff, formType, ID_CTBL);
+        PropChunk(picture->iff, formType, ID_DGVW);
+        PropChunk(picture->iff, formType, ID_CLUT);
+        PropChunk(picture->iff, formType, ID_DYCP);
         /* Metadata chunks (optional) - single instance */
         PropChunk(picture->iff, formType, ID_GRAB);
         PropChunk(picture->iff, formType, ID_DEST);
@@ -530,6 +567,7 @@ LONG ParseIFFPicture(struct IFFPicture *picture)
         PropChunk(picture->iff, formType, ID_AUTH);
         /* Metadata chunks that can appear multiple times - use CollectionChunk */
         CollectionChunk(picture->iff, formType, ID_CRNG);
+        CollectionChunk(picture->iff, formType, ID_CCRT);
         CollectionChunk(picture->iff, formType, ID_ANNO);
         CollectionChunk(picture->iff, formType, ID_TEXT);
         PropChunk(picture->iff, formType, ID_FVER);
@@ -772,6 +810,26 @@ LONG ParseIFFPicture(struct IFFPicture *picture)
         if (formType == ID_ILBM && picture->bmhd && picture->bmhd->nPlanes == 24) {
             picture->isIndexed = FALSE;
         }
+        /* 32-bit RGBA ILBM: 24 RGB bitplanes + 8 alpha bitplanes per scanline */
+        if (formType == ID_ILBM && picture->bmhd && picture->bmhd->nPlanes == 32) {
+            picture->isIndexed = FALSE;
+        }
+        /* 8-bit grey ILBM without CMAP (luminance in 8 bitplanes, no palette) */
+        if (formType == ID_ILBM && picture->bmhd && picture->bmhd->nPlanes == 8U
+            && (!picture->cmap || !picture->cmap->data)) {
+            picture->isIndexed = FALSE;
+            picture->isGrayscale = TRUE;
+        }
+        /* Digi-View style RGB: 21-plane interleaved order; DGVW chunk marks the same family */
+        picture->isDigiViewRgb = FALSE;
+        if (formType == ID_ILBM && picture->bmhd) {
+            if (picture->bmhd->nPlanes == 21U) {
+                picture->isDigiViewRgb = TRUE;
+                picture->isIndexed = FALSE;
+            } else if (FindProp(picture->iff, picture->formtype, ID_DGVW) != NULL) {
+                picture->isDigiViewRgb = TRUE;
+            }
+        }
         /* NewTek Video Toaster framestore: 16-plane ILBM with PLTP mapping planes to component 6/7 */
         if (formType == ID_ILBM && picture->bmhd && picture->bmhd->nPlanes == VT_FRAMESTORE_NPLANES &&
             picture->pltp && PLTPIsVTFramestore(picture->pltp)) {
@@ -974,6 +1032,14 @@ BOOL IsFramestore(struct IFFPicture *picture)
     return picture->isFramestore;
 }
 
+BOOL IsDigiViewRgb(struct IFFPicture *picture)
+{
+    if (!picture) {
+        return FALSE;
+    }
+    return picture->isDigiViewRgb;
+}
+
 BOOL IsCompressed(struct IFFPicture *picture)
 {
     if (!picture) {
@@ -1026,6 +1092,7 @@ struct IFFImageInfo *GetImageInfo(struct IFFPicture *picture)
     info.isHAM = IsHAM(picture);
     info.isEHB = IsEHB(picture);
     info.isFramestore = IsFramestore(picture);
+    info.isDigiViewRgb = picture->isDigiViewRgb;
     info.isCompressed = IsCompressed(picture);
     info.multipaletteChunkId = GetMultipaletteChunkId(picture);
     info.isIndexed = picture->isIndexed;
@@ -1114,7 +1181,12 @@ LONG ReadBMHD(struct IFFPicture *picture)
     /* Set flags based on BMHD */
     picture->bmhd = bmhd;
     picture->isCompressed = (bmhd->compression != cmpNone);
-    picture->hasAlpha = (bmhd->masking == mskHasMask);
+    picture->hasAlpha = (bmhd->masking == mskHasMask
+        || bmhd->masking == mskHasTransparentColor
+        || bmhd->masking == mskLasso);
+    if (picture->formtype == ID_ILBM && bmhd->nPlanes == 32U) {
+        picture->hasAlpha = TRUE;
+    }
     
     return RETURN_OK;
 }
@@ -2232,6 +2304,75 @@ VOID ReadAllMeta(struct IFFPicture *picture)
         }
     }
     
+    /* Read CCRT chunks (Graphicraft color cycle; multiple instances) */
+    ci = FindCollection(picture->iff, picture->formtype, ID_CCRT);
+    if (ci) {
+        count = 0;
+        while (ci) {
+            count++;
+            ci = ci->ci_Next;
+        }
+        if (count > 0) {
+            meta = EnsureMeta(picture);
+            if (meta) {
+                meta->ccrtCount = count;
+                meta->ccrtArray = (struct CycleInfo *)AllocMem(count * sizeof(struct CycleInfo), MEMF_PUBLIC | MEMF_CLEAR);
+                if (meta->ccrtArray) {
+                    ci = FindCollection(picture->iff, picture->formtype, ID_CCRT);
+                    for (i = 0; i < count && ci; i++, ci = ci->ci_Next) {
+                        if (ci->ci_Size >= 14) {
+                            src = (UBYTE *)ci->ci_Data;
+                            meta->ccrtArray[i].direction = (WORD)((src[0] << 8) | src[1]);
+                            meta->ccrtArray[i].start = src[2];
+                            meta->ccrtArray[i].end = src[3];
+                            meta->ccrtArray[i].seconds = (LONG)(((ULONG)src[4] << 24) | ((ULONG)src[5] << 16)
+                                | ((ULONG)src[6] << 8) | (ULONG)src[7]);
+                            meta->ccrtArray[i].microseconds = (LONG)(((ULONG)src[8] << 24) | ((ULONG)src[9] << 16)
+                                | ((ULONG)src[10] << 8) | (ULONG)src[11]);
+                            meta->ccrtArray[i].pad = (WORD)((src[12] << 8) | src[13]);
+                        }
+                    }
+                    meta->ccrt = meta->ccrtArray;
+                }
+            }
+        }
+    }
+    
+    /* Optional raw chunks (CLUT, DGVW, DYCP): copy payload for callers / future decode */
+    sp = FindProp(picture->iff, picture->formtype, ID_CLUT);
+    if (sp && sp->sp_Size > 0) {
+        meta = EnsureMeta(picture);
+        if (meta) {
+            meta->clutSize = sp->sp_Size;
+            meta->clut = (UBYTE *)AllocMem(sp->sp_Size, MEMF_PUBLIC | MEMF_CLEAR);
+            if (meta->clut) {
+                CopyMem(sp->sp_Data, meta->clut, sp->sp_Size);
+            }
+        }
+    }
+    sp = FindProp(picture->iff, picture->formtype, ID_DGVW);
+    if (sp && sp->sp_Size > 0) {
+        meta = EnsureMeta(picture);
+        if (meta) {
+            meta->dgvwSize = sp->sp_Size;
+            meta->dgvw = (UBYTE *)AllocMem(sp->sp_Size, MEMF_PUBLIC | MEMF_CLEAR);
+            if (meta->dgvw) {
+                CopyMem(sp->sp_Data, meta->dgvw, sp->sp_Size);
+            }
+        }
+    }
+    sp = FindProp(picture->iff, picture->formtype, ID_DYCP);
+    if (sp && sp->sp_Size > 0) {
+        meta = EnsureMeta(picture);
+        if (meta) {
+            meta->dycpSize = sp->sp_Size;
+            meta->dycp = (UBYTE *)AllocMem(sp->sp_Size, MEMF_PUBLIC | MEMF_CLEAR);
+            if (meta->dycp) {
+                CopyMem(sp->sp_Data, meta->dycp, sp->sp_Size);
+            }
+        }
+    }
+    
     /* Read Copyright chunk (single instance) */
     sp = FindProp(picture->iff, picture->formtype, ID_COPYRIGHT);
     if (sp && sp->sp_Size > 0) {
@@ -2641,9 +2782,24 @@ LONG Decode(struct IFFPicture *picture)
         height = picture->bmhd->h;
     }
     
-    /* Allocate RGB pixel buffer - use public memory (not chip RAM, we're not rendering to display) */
-    /* For YUVN, we'll check for alpha and reallocate if needed in DecodeYUVN() */
-    picture->pixelDataSize = (ULONG)width * height * 3;
+    /* Allocate RGB or RGBA buffer; some ILBM/PBM/HAM/EHB paths need alpha (mask, transparent, lasso, 32-plane RGBA). */
+    {
+        ULONG bpp;
+        bpp = 3;
+        if (picture->formtype != ID_YUVN && picture->bmhd) {
+            if (picture->bmhd->masking == mskHasMask
+                || picture->bmhd->masking == mskHasTransparentColor
+                || picture->bmhd->masking == mskLasso) {
+                bpp = 4;
+                picture->hasAlpha = TRUE;
+            }
+            if (picture->formtype == ID_ILBM && picture->bmhd->nPlanes == 32U) {
+                bpp = 4;
+                picture->hasAlpha = TRUE;
+            }
+        }
+        picture->pixelDataSize = (ULONG)width * height * bpp;
+    }
     picture->pixelData = (UBYTE *)AllocMem(picture->pixelDataSize, MEMF_PUBLIC | MEMF_CLEAR);
     if (!picture->pixelData) {
         SetIFFPictureError(picture, IFFPICTURE_NOMEM, "Failed to allocate pixel data buffer");

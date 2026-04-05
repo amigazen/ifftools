@@ -99,6 +99,83 @@ struct CRangeList *ReadAllCRNG(struct IFFPicture *picture)
 }
 
 /*
+** ReadCCRT - Read CCRT chunk (Graphicraft color cycle, first instance)
+*/
+struct CycleInfo *ReadCCRT(struct IFFPicture *picture)
+{
+    if (!picture || !picture->metadata) {
+        return NULL;
+    }
+    return picture->metadata->ccrt;
+}
+
+/*
+** ReadAllCCRT - Read all CCRT chunks
+*/
+struct CycleInfoList *ReadAllCCRT(struct IFFPicture *picture)
+{
+    static struct CycleInfoList result;
+    
+    if (!picture || !picture->metadata || picture->metadata->ccrtCount == 0) {
+        return NULL;
+    }
+    result.count = picture->metadata->ccrtCount;
+    result.items = picture->metadata->ccrtArray;
+    return &result;
+}
+
+/*
+** ReadCLUT - Raw CLUT chunk payload (deep ILBM auxiliary), optional size out
+*/
+UBYTE *ReadCLUT(struct IFFPicture *picture, ULONG *size)
+{
+    if (!picture || !picture->metadata || !picture->metadata->clut) {
+        if (size) {
+            *size = 0;
+        }
+        return NULL;
+    }
+    if (size) {
+        *size = picture->metadata->clutSize;
+    }
+    return picture->metadata->clut;
+}
+
+/*
+** ReadDGVW - Raw DGVW chunk (Digi-View), optional size out
+*/
+UBYTE *ReadDGVW(struct IFFPicture *picture, ULONG *size)
+{
+    if (!picture || !picture->metadata || !picture->metadata->dgvw) {
+        if (size) {
+            *size = 0;
+        }
+        return NULL;
+    }
+    if (size) {
+        *size = picture->metadata->dgvwSize;
+    }
+    return picture->metadata->dgvw;
+}
+
+/*
+** ReadDYCP - Raw DYCP chunk (dynamic palette; not applied in raster decode)
+*/
+UBYTE *ReadDYCP(struct IFFPicture *picture, ULONG *size)
+{
+    if (!picture || !picture->metadata || !picture->metadata->dycp) {
+        if (size) {
+            *size = 0;
+        }
+        return NULL;
+    }
+    if (size) {
+        *size = picture->metadata->dycpSize;
+    }
+    return picture->metadata->dycp;
+}
+
+/*
 ** ReadCopyright - Read Copyright chunk
 ** Returns: Pointer to null-terminated string in IFFPicture, or NULL if not found
 ** Pointer is valid until FreeIFFPicture() is called

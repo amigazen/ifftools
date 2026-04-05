@@ -275,12 +275,7 @@ Documentation:
 ? README.md in the repository
 ? SDK/doc/iffsound.doc
 ? IFF Sound Formats.guide
-? iff2png.guide (sibling picture tool)
 
-Community:
-? GitHub: https://github.com/amigazen/ifftools/
-? Web: http://www.amigazen.com/toolkit/
-? Email: toolkit@amigazen.com
 @ENDNODE
 
 @NODE "changelog" "Version History"
