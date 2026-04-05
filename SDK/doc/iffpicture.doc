@@ -1,61 +1,61 @@
 TABLE OF CONTENTS
 
-iffpicture.library/AllocIFFPicture
-iffpicture.library/FreeIFFPicture
-iffpicture.library/InitIFFPictureasDOS
-iffpicture.library/OpenIFFPicture
-iffpicture.library/CloseIFFPicture
-iffpicture.library/ParseIFFPicture
-iffpicture.library/ReadBMHD
-iffpicture.library/ReadCMAP
-iffpicture.library/ReadCAMG
-iffpicture.library/ReadBODY
-iffpicture.library/ReadABIT
-iffpicture.library/GetIFFHandle
-iffpicture.library/GetWidth
-iffpicture.library/GetHeight
-iffpicture.library/GetDepth
-iffpicture.library/GetFormType
-iffpicture.library/GetVPModes
-iffpicture.library/GetBMHD
-iffpicture.library/GetFXHD
-iffpicture.library/GetGPHD
-iffpicture.library/GetYCHD
-iffpicture.library/GetIFFColorMap
-iffpicture.library/GetFAXXCompression
-iffpicture.library/GetImageInfo
-iffpicture.library/ReadGRAB
-iffpicture.library/ReadDEST
-iffpicture.library/ReadSPRT
-iffpicture.library/ReadCRNG
-iffpicture.library/ReadAllCRNG
-iffpicture.library/ReadCopyright
-iffpicture.library/ReadAuthor
-iffpicture.library/ReadAnnotation
-iffpicture.library/ReadAllAnnotations
-iffpicture.library/ReadText
-iffpicture.library/ReadAllTexts
-iffpicture.library/GetPixelData
-iffpicture.library/GetPixelDataSize
-iffpicture.library/HasAlpha
-iffpicture.library/IsHAM
-iffpicture.library/IsEHB
-iffpicture.library/IsFramestore
-iffpicture.library/IsCompressed
-iffpicture.library/GetMultipaletteChunkId
-iffpicture.library/IsMultipaletteActive
-iffpicture.library/GetPaletteIndices
-iffpicture.library/Decode
-iffpicture.library/DecodeToRGB
-iffpicture.library/DecodeToBitMap
-iffpicture.library/DecodeToRastPort
-iffpicture.library/FreeRastPort
-iffpicture.library/AnalyzeFormat
-iffpicture.library/GetOptimalPNGConfig
-iffpicture.library/BestPictureModeID
-iffpicture.library/IFFPictureError
-iffpicture.library/IFFPictureErrorString
-iffpicture.library/AllocIFFPicture                           iffpicture.library/AllocIFFPicture
+iffpicture.lib/AllocIFFPicture
+iffpicture.lib/FreeIFFPicture
+iffpicture.lib/InitIFFPictureasDOS
+iffpicture.lib/OpenIFFPicture
+iffpicture.lib/CloseIFFPicture
+iffpicture.lib/ParseIFFPicture
+iffpicture.lib/ReadBMHD
+iffpicture.lib/ReadCMAP
+iffpicture.lib/ReadCAMG
+iffpicture.lib/ReadBODY
+iffpicture.lib/ReadABIT
+iffpicture.lib/GetIFFHandle
+iffpicture.lib/GetWidth
+iffpicture.lib/GetHeight
+iffpicture.lib/GetDepth
+iffpicture.lib/GetFormType
+iffpicture.lib/GetVPModes
+iffpicture.lib/GetBMHD
+iffpicture.lib/GetFXHD
+iffpicture.lib/GetGPHD
+iffpicture.lib/GetYCHD
+iffpicture.lib/GetIFFColorMap
+iffpicture.lib/GetFAXXCompression
+iffpicture.lib/GetImageInfo
+iffpicture.lib/ReadGRAB
+iffpicture.lib/ReadDEST
+iffpicture.lib/ReadSPRT
+iffpicture.lib/ReadCRNG
+iffpicture.lib/ReadAllCRNG
+iffpicture.lib/ReadCopyright
+iffpicture.lib/ReadAuthor
+iffpicture.lib/ReadAnnotation
+iffpicture.lib/ReadAllAnnotations
+iffpicture.lib/ReadText
+iffpicture.lib/ReadAllTexts
+iffpicture.lib/GetPixelData
+iffpicture.lib/GetPixelDataSize
+iffpicture.lib/HasAlpha
+iffpicture.lib/IsHAM
+iffpicture.lib/IsEHB
+iffpicture.lib/IsFramestore
+iffpicture.lib/IsCompressed
+iffpicture.lib/GetMultipaletteChunkId
+iffpicture.lib/IsMultipaletteActive
+iffpicture.lib/GetPaletteIndices
+iffpicture.lib/Decode
+iffpicture.lib/DecodeToRGB
+iffpicture.lib/DecodeToBitMap
+iffpicture.lib/DecodeToRastPort
+iffpicture.lib/FreeRastPort
+iffpicture.lib/AnalyzeFormat
+iffpicture.lib/GetOptimalPNGConfig
+iffpicture.lib/BestPictureModeID
+iffpicture.lib/IFFPictureError
+iffpicture.lib/IFFPictureErrorString
+iffpicture.lib/AllocIFFPicture                           iffpicture.lib/AllocIFFPicture
 
    NAME
 	AllocIFFPicture -- create a new IFFPicture structure. (V1.0)
@@ -78,7 +78,7 @@ iffpicture.library/AllocIFFPicture                           iffpicture.library/
    SEE ALSO
 	FreeIFFPicture(), <iffpicture.h>
 
-iffpicture.library/FreeIFFPicture                         iffpicture.library/FreeIFFPicture
+iffpicture.lib/FreeIFFPicture                         iffpicture.lib/FreeIFFPicture
 
    NAME
 	FreeIFFPicture -- deallocate an IFFPicture structure. (V1.0)
@@ -102,7 +102,7 @@ iffpicture.library/FreeIFFPicture                         iffpicture.library/Fre
    SEE ALSO
 	AllocIFFPicture(), CloseIFFPicture(), <iffpicture.h>
 
-iffpicture.library/InitIFFPictureasDOS           iffpicture.library/InitIFFPictureasDOS
+iffpicture.lib/InitIFFPictureasDOS           iffpicture.lib/InitIFFPictureasDOS
 
    NAME
 	InitIFFPictureasDOS -- initialize an IFFPicture as a DOS stream. (V1.0)
@@ -128,7 +128,7 @@ iffpicture.library/InitIFFPictureasDOS           iffpicture.library/InitIFFPictu
    SEE ALSO
 	OpenIFFPicture(), GetIFFHandle(), <iffpicture.h>
 
-iffpicture.library/OpenIFFPicture                     iffpicture.library/OpenIFFPicture
+iffpicture.lib/OpenIFFPicture                     iffpicture.lib/OpenIFFPicture
 
    NAME
 	OpenIFFPicture -- prepare an IFFPicture to read or write a new IFF
@@ -161,7 +161,7 @@ iffpicture.library/OpenIFFPicture                     iffpicture.library/OpenIFF
 	CloseIFFPicture(), InitIFFPictureasDOS(), GetIFFHandle(),
 	<iffpicture.h>
 
-iffpicture.library/CloseIFFPicture                   iffpicture.library/CloseIFFPicture
+iffpicture.lib/CloseIFFPicture                   iffpicture.lib/CloseIFFPicture
 
    NAME
 	CloseIFFPicture -- close an IFFPicture context. (V1.0)
@@ -189,7 +189,7 @@ iffpicture.library/CloseIFFPicture                   iffpicture.library/CloseIFF
    SEE ALSO
 	OpenIFFPicture(), FreeIFFPicture(), <iffpicture.h>
 
-iffpicture.library/ParseIFFPicture                   iffpicture.library/ParseIFFPicture
+iffpicture.lib/ParseIFFPicture                   iffpicture.lib/ParseIFFPicture
 
    NAME
 	ParseIFFPicture -- parse an IFF file structure. (V1.0)
@@ -226,7 +226,7 @@ iffpicture.library/ParseIFFPicture                   iffpicture.library/ParseIFF
 	OpenIFFPicture(), ReadBMHD(), ReadCMAP(), ReadCAMG(),
 	GetMultipaletteChunkId(), Decode(), <iffpicture.h>
 
-iffpicture.library/ReadBMHD                             iffpicture.library/ReadBMHD
+iffpicture.lib/ReadBMHD                             iffpicture.lib/ReadBMHD
 
    NAME
 	ReadBMHD -- read BMHD (Bitmap Header) chunk. (V1.0)
@@ -253,7 +253,7 @@ iffpicture.library/ReadBMHD                             iffpicture.library/ReadB
    SEE ALSO
 	ParseIFFPicture(), GetBMHD(), <iffpicture.h>
 
-iffpicture.library/ReadCMAP                             iffpicture.library/ReadCMAP
+iffpicture.lib/ReadCMAP                             iffpicture.lib/ReadCMAP
 
    NAME
 	ReadCMAP -- read CMAP (Color Map) chunk. (V1.0)
@@ -284,7 +284,7 @@ iffpicture.library/ReadCMAP                             iffpicture.library/ReadC
    SEE ALSO
 	ParseIFFPicture(), GetIFFColorMap(), <iffpicture.h>
 
-iffpicture.library/ReadCAMG                             iffpicture.library/ReadCAMG
+iffpicture.lib/ReadCAMG                             iffpicture.lib/ReadCAMG
 
    NAME
 	ReadCAMG -- read CAMG (Amiga Viewport Modes) chunk. (V1.0)
@@ -313,7 +313,7 @@ iffpicture.library/ReadCAMG                             iffpicture.library/ReadC
    SEE ALSO
 	ParseIFFPicture(), GetVPModes(), <iffpicture.h>
 
-iffpicture.library/ReadBODY                             iffpicture.library/ReadBODY
+iffpicture.lib/ReadBODY                             iffpicture.lib/ReadBODY
 
    NAME
 	ReadBODY -- read BODY chunk header information. (V1.0)
@@ -338,7 +338,7 @@ iffpicture.library/ReadBODY                             iffpicture.library/ReadB
    SEE ALSO
 	ParseIFFPicture(), Decode(), <iffpicture.h>
 
-iffpicture.library/ReadABIT                             iffpicture.library/ReadABIT
+iffpicture.lib/ReadABIT                             iffpicture.lib/ReadABIT
 
    NAME
 	ReadABIT -- read ABIT (Alpha Bitmap) chunk header information. (V1.0)
@@ -362,7 +362,7 @@ iffpicture.library/ReadABIT                             iffpicture.library/ReadA
    SEE ALSO
 	ParseIFFPicture(), Decode(), <iffpicture.h>
 
-iffpicture.library/GetIFFHandle                       iffpicture.library/GetIFFHandle
+iffpicture.lib/GetIFFHandle                       iffpicture.lib/GetIFFHandle
 
    NAME
 	GetIFFHandle -- get pointer to internal IFFHandle structure. (V1.0)
@@ -388,7 +388,7 @@ iffpicture.library/GetIFFHandle                       iffpicture.library/GetIFFH
    SEE ALSO
 	InitIFFPictureasDOS(), OpenIFFPicture(), <iffpicture.h>
 
-iffpicture.library/GetWidth                             iffpicture.library/GetWidth
+iffpicture.lib/GetWidth                             iffpicture.lib/GetWidth
 
    NAME
 	GetWidth -- get image width in pixels. (V1.0)
@@ -413,7 +413,7 @@ iffpicture.library/GetWidth                             iffpicture.library/GetWi
    SEE ALSO
 	GetHeight(), GetDepth(), GetBMHD(), GetFXHD(), GetYCHD(), <iffpicture.h>
 
-iffpicture.library/GetHeight                           iffpicture.library/GetHeight
+iffpicture.lib/GetHeight                           iffpicture.lib/GetHeight
 
    NAME
 	GetHeight -- get image height in pixels. (V1.0)
@@ -438,7 +438,7 @@ iffpicture.library/GetHeight                           iffpicture.library/GetHei
    SEE ALSO
 	GetWidth(), GetDepth(), GetBMHD(), GetFXHD(), GetYCHD(), <iffpicture.h>
 
-iffpicture.library/GetDepth                             iffpicture.library/GetDepth
+iffpicture.lib/GetDepth                             iffpicture.lib/GetDepth
 
    NAME
 	GetDepth -- get number of bitplanes. (V1.0)
@@ -464,7 +464,7 @@ iffpicture.library/GetDepth                             iffpicture.library/GetDe
    SEE ALSO
 	GetWidth(), GetHeight(), GetBMHD(), <iffpicture.h>
 
-iffpicture.library/GetFormType                         iffpicture.library/GetFormType
+iffpicture.lib/GetFormType                         iffpicture.lib/GetFormType
 
    NAME
 	GetFormType -- get IFF FORM type identifier. (V1.0)
@@ -490,7 +490,7 @@ iffpicture.library/GetFormType                         iffpicture.library/GetFor
    SEE ALSO
 	<iffpicture.h>
 
-iffpicture.library/GetVPModes                           iffpicture.library/GetVPModes
+iffpicture.lib/GetVPModes                           iffpicture.lib/GetVPModes
 
    NAME
 	GetVPModes -- get Amiga viewport mode flags from CAMG chunk. (V1.0)
@@ -516,7 +516,7 @@ iffpicture.library/GetVPModes                           iffpicture.library/GetVP
    SEE ALSO
 	ReadCAMG(), BestPictureModeID(), <iffpicture.h>
 
-iffpicture.library/GetFAXXCompression             iffpicture.library/GetFAXXCompression
+iffpicture.lib/GetFAXXCompression             iffpicture.lib/GetFAXXCompression
 
    NAME
 	GetFAXXCompression -- get FAXX compression type. (V1.0)
@@ -545,7 +545,7 @@ iffpicture.library/GetFAXXCompression             iffpicture.library/GetFAXXComp
    SEE ALSO
 	GetFormType(), <iffpicture.h>
 
-iffpicture.library/GetBMHD                               iffpicture.library/GetBMHD
+iffpicture.lib/GetBMHD                               iffpicture.lib/GetBMHD
 
    NAME
 	GetBMHD -- get pointer to BitMapHeader structure. (V1.0)
@@ -570,7 +570,7 @@ iffpicture.library/GetBMHD                               iffpicture.library/GetB
    SEE ALSO
 	ReadBMHD(), <iffpicture.h>
 
-iffpicture.library/GetFXHD                               iffpicture.library/GetFXHD
+iffpicture.lib/GetFXHD                               iffpicture.lib/GetFXHD
 
    NAME
 	GetFXHD -- get pointer to FAXX header (FXHD chunk). (V1.0)
@@ -598,7 +598,7 @@ iffpicture.library/GetFXHD                               iffpicture.library/GetF
    SEE ALSO
 	GetFormType(), GetGPHD(), GetFAXXCompression(), <iffpicture.h>
 
-iffpicture.library/GetGPHD                               iffpicture.library/GetGPHD
+iffpicture.lib/GetGPHD                               iffpicture.lib/GetGPHD
 
    NAME
 	GetGPHD -- get pointer to GPHD header (optional FAXX extension). (V1.0)
@@ -624,7 +624,7 @@ iffpicture.library/GetGPHD                               iffpicture.library/GetG
    SEE ALSO
 	GetFXHD(), GetFormType(), <iffpicture.h>
 
-iffpicture.library/GetYCHD                               iffpicture.library/GetYCHD
+iffpicture.lib/GetYCHD                               iffpicture.lib/GetYCHD
 
    NAME
 	GetYCHD -- get pointer to YUVN header (YCHD chunk). (V1.0)
@@ -652,7 +652,7 @@ iffpicture.library/GetYCHD                               iffpicture.library/GetY
    SEE ALSO
 	GetFormType(), GetWidth(), GetHeight(), <iffpicture.h>
 
-iffpicture.library/GetIFFColorMap                     iffpicture.library/GetIFFColorMap
+iffpicture.lib/GetIFFColorMap                     iffpicture.lib/GetIFFColorMap
 
    NAME
 	GetIFFColorMap -- get pointer to IFFColorMap structure. (V1.0)
@@ -680,7 +680,7 @@ iffpicture.library/GetIFFColorMap                     iffpicture.library/GetIFFC
    SEE ALSO
 	ReadCMAP(), <iffpicture.h>
 
-iffpicture.library/GetPixelData                         iffpicture.library/GetPixelData
+iffpicture.lib/GetPixelData                         iffpicture.lib/GetPixelData
 
    NAME
 	GetPixelData -- get pointer to decoded pixel data buffer. (V1.0)
@@ -706,7 +706,7 @@ iffpicture.library/GetPixelData                         iffpicture.library/GetPi
 	Decode(), DecodeToRGB(), GetPixelDataSize(), GetImageInfo(),
 	GetPaletteIndices(), <iffpicture.h>
 
-iffpicture.library/GetPixelDataSize                   iffpicture.library/GetPixelDataSize
+iffpicture.lib/GetPixelDataSize                   iffpicture.lib/GetPixelDataSize
 
    NAME
 	GetPixelDataSize -- get size of decoded pixel data in bytes. (V1.0)
@@ -730,7 +730,7 @@ iffpicture.library/GetPixelDataSize                   iffpicture.library/GetPixe
    SEE ALSO
 	GetPixelData(), Decode(), GetImageInfo(), <iffpicture.h>
 
-iffpicture.library/GetImageInfo                           iffpicture.library/GetImageInfo
+iffpicture.lib/GetImageInfo                           iffpicture.lib/GetImageInfo
 
    NAME
 	GetImageInfo -- get aggregate of core image properties. (V1.0)
@@ -766,7 +766,7 @@ iffpicture.library/GetImageInfo                           iffpicture.library/Get
 	GetWidth(), GetHeight(), GetFormType(), IsFramestore(), HasAlpha(),
 	GetMultipaletteChunkId(), <iffpicture.h>
 
-iffpicture.library/HasAlpha                             iffpicture.library/HasAlpha
+iffpicture.lib/HasAlpha                             iffpicture.lib/HasAlpha
 
    NAME
 	HasAlpha -- check if image has alpha channel. (V1.0)
@@ -790,7 +790,7 @@ iffpicture.library/HasAlpha                             iffpicture.library/HasAl
    SEE ALSO
 	AnalyzeFormat(), <iffpicture.h>
 
-iffpicture.library/IsHAM                                 iffpicture.library/IsHAM
+iffpicture.lib/IsHAM                                 iffpicture.lib/IsHAM
 
    NAME
 	IsHAM -- check if image uses HAM mode. (V1.0)
@@ -814,7 +814,7 @@ iffpicture.library/IsHAM                                 iffpicture.library/IsHA
    SEE ALSO
 	ReadCAMG(), AnalyzeFormat(), <iffpicture.h>
 
-iffpicture.library/IsEHB                                 iffpicture.library/IsEHB
+iffpicture.lib/IsEHB                                 iffpicture.lib/IsEHB
 
    NAME
 	IsEHB -- check if image uses EHB mode. (V1.0)
@@ -838,7 +838,7 @@ iffpicture.library/IsEHB                                 iffpicture.library/IsEH
    SEE ALSO
 	ReadCAMG(), AnalyzeFormat(), <iffpicture.h>
 
-iffpicture.library/IsFramestore                         iffpicture.library/IsFramestore
+iffpicture.lib/IsFramestore                         iffpicture.lib/IsFramestore
 
    NAME
 	IsFramestore -- check if image is NewTek Video Toaster framestore. (V1.0)
@@ -865,7 +865,7 @@ iffpicture.library/IsFramestore                         iffpicture.library/IsFra
    SEE ALSO
 	GetFormType(), GetImageInfo(), Decode(), <iffpicture.h>
 
-iffpicture.library/IsCompressed                         iffpicture.library/IsCompressed
+iffpicture.lib/IsCompressed                         iffpicture.lib/IsCompressed
 
    NAME
 	IsCompressed -- check if image data is compressed. (V1.0)
@@ -890,7 +890,7 @@ iffpicture.library/IsCompressed                         iffpicture.library/IsCom
 	ReadBMHD(), AnalyzeFormat(), GetMultipaletteChunkId(),
 	<iffpicture.h>
 
-iffpicture.library/GetMultipaletteChunkId    iffpicture.library/GetMultipaletteChunkId
+iffpicture.lib/GetMultipaletteChunkId    iffpicture.lib/GetMultipaletteChunkId
 
    NAME
 	GetMultipaletteChunkId -- multipalette source chunk ID. (V1.0)
@@ -920,7 +920,7 @@ iffpicture.library/GetMultipaletteChunkId    iffpicture.library/GetMultipaletteC
 	IsMultipaletteActive(), GetImageInfo(), ParseIFFPicture(),
 	Decode(), <iffpicture.h>
 
-iffpicture.library/IsMultipaletteActive      iffpicture.library/IsMultipaletteActive
+iffpicture.lib/IsMultipaletteActive      iffpicture.lib/IsMultipaletteActive
 
    NAME
 	IsMultipaletteActive -- TRUE if multipalette decode applies. (V1.0)
@@ -944,7 +944,7 @@ iffpicture.library/IsMultipaletteActive      iffpicture.library/IsMultipaletteAc
    SEE ALSO
 	GetMultipaletteChunkId(), GetImageInfo(), <iffpicture.h>
 
-iffpicture.library/GetPaletteIndices           iffpicture.library/GetPaletteIndices
+iffpicture.lib/GetPaletteIndices           iffpicture.lib/GetPaletteIndices
 
    NAME
 	GetPaletteIndices -- pointer to decoded palette indices. (V1.0)
@@ -971,7 +971,7 @@ iffpicture.library/GetPaletteIndices           iffpicture.library/GetPaletteIndi
 	GetPixelData(), Decode(), IsMultipaletteActive(),
 	<iffpicture.h>
 
-iffpicture.library/Decode                                 iffpicture.library/Decode
+iffpicture.lib/Decode                                 iffpicture.lib/Decode
 
    NAME
 	Decode -- decode IFF image data to internal format. (V1.0)
@@ -1001,7 +1001,7 @@ iffpicture.library/Decode                                 iffpicture.library/Dec
 	ParseIFFPicture(), DecodeToRGB(), DecodeToBitMap(),
 	GetMultipaletteChunkId(), <iffpicture.h>
 
-iffpicture.library/DecodeToRGB                         iffpicture.library/DecodeToRGB
+iffpicture.lib/DecodeToRGB                         iffpicture.lib/DecodeToRGB
 
    NAME
 	DecodeToRGB -- decode IFF image and convert to RGB format. (V1.0)
@@ -1032,7 +1032,7 @@ iffpicture.library/DecodeToRGB                         iffpicture.library/Decode
    SEE ALSO
 	Decode(), FreeIFFPicture(), <iffpicture.h>
 
-iffpicture.library/DecodeToBitMap                     iffpicture.library/DecodeToBitMap
+iffpicture.lib/DecodeToBitMap                     iffpicture.lib/DecodeToBitMap
 
    NAME
 	DecodeToBitMap -- create Amiga BitMap from decoded IFF image. (V1.0)
@@ -1071,7 +1071,7 @@ iffpicture.library/DecodeToBitMap                     iffpicture.library/DecodeT
 	Decode(), BestPictureModeID(), FreeBitMap(), DecodeToRastPort(),
 	<iffpicture.h>
 
-iffpicture.library/DecodeToRastPort                 iffpicture.library/DecodeToRastPort
+iffpicture.lib/DecodeToRastPort                 iffpicture.lib/DecodeToRastPort
 
    NAME
 	DecodeToRastPort -- create off-screen RastPort with BitMap from decoded
@@ -1108,7 +1108,7 @@ iffpicture.library/DecodeToRastPort                 iffpicture.library/DecodeToR
 	Decode(), DecodeToBitMap(), FreeRastPort(), BestPictureModeID(),
 	<iffpicture.h>
 
-iffpicture.library/FreeRastPort                         iffpicture.library/FreeRastPort
+iffpicture.lib/FreeRastPort                         iffpicture.lib/FreeRastPort
 
    NAME
 	FreeRastPort -- free RastPort and its attached BitMap. (V1.0)
@@ -1131,7 +1131,7 @@ iffpicture.library/FreeRastPort                         iffpicture.library/FreeR
    SEE ALSO
 	DecodeToRastPort(), <iffpicture.h>
 
-iffpicture.library/AnalyzeFormat                       iffpicture.library/AnalyzeFormat
+iffpicture.lib/AnalyzeFormat                       iffpicture.lib/AnalyzeFormat
 
    NAME
 	AnalyzeFormat -- analyze IFF image format and properties. (V1.0)
@@ -1161,7 +1161,7 @@ iffpicture.library/AnalyzeFormat                       iffpicture.library/Analyz
    SEE ALSO
 	ParseIFFPicture(), GetOptimalPNGConfig(), <iffpicture.h>
 
-iffpicture.library/GetOptimalPNGConfig           iffpicture.library/GetOptimalPNGConfig
+iffpicture.lib/GetOptimalPNGConfig           iffpicture.lib/GetOptimalPNGConfig
 
    NAME
 	GetOptimalPNGConfig -- determine optimal PNG encoding configuration.
@@ -1203,7 +1203,7 @@ iffpicture.library/GetOptimalPNGConfig           iffpicture.library/GetOptimalPN
    SEE ALSO
 	AnalyzeFormat(), DecodeToRGB(), PNGEncoder_FreeConfig(), <iffpicture.h>
 
-iffpicture.library/BestPictureModeID             iffpicture.library/BestPictureModeID
+iffpicture.lib/BestPictureModeID             iffpicture.lib/BestPictureModeID
 
    NAME
 	BestPictureModeID -- determine best Amiga screenmode for displaying
@@ -1246,7 +1246,7 @@ iffpicture.library/BestPictureModeID             iffpicture.library/BestPictureM
    SEE ALSO
 	ParseIFFPicture(), GetVPModes(), DecodeToBitMap(), <iffpicture.h>
 
-iffpicture.library/IFFPictureError                    iffpicture.library/IFFPictureError
+iffpicture.lib/IFFPictureError                    iffpicture.lib/IFFPictureError
 
    NAME
 	IFFPictureError -- get last error code. (V1.0)
@@ -1271,7 +1271,7 @@ iffpicture.library/IFFPictureError                    iffpicture.library/IFFPict
    SEE ALSO
 	IFFPictureErrorString(), <iffpicture.h>
 
-iffpicture.library/IFFPictureErrorString              iffpicture.library/IFFPictureErrorString
+iffpicture.lib/IFFPictureErrorString              iffpicture.lib/IFFPictureErrorString
 
    NAME
 	IFFPictureErrorString -- get last error message. (V1.0)
@@ -1297,7 +1297,7 @@ iffpicture.library/IFFPictureErrorString              iffpicture.library/IFFPict
    SEE ALSO
 	IFFPictureError(), <iffpicture.h>
 
-iffpicture.library/ReadGRAB                             iffpicture.library/ReadGRAB
+iffpicture.lib/ReadGRAB                             iffpicture.lib/ReadGRAB
 
    NAME
 	ReadGRAB -- read GRAB chunk (hotspot coordinates). (V1.0)
@@ -1327,7 +1327,7 @@ iffpicture.library/ReadGRAB                             iffpicture.library/ReadG
    SEE ALSO
 	ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadDEST                             iffpicture.library/ReadDEST
+iffpicture.lib/ReadDEST                             iffpicture.lib/ReadDEST
 
    NAME
 	ReadDEST -- read DEST chunk (destination merge information). (V1.0)
@@ -1357,7 +1357,7 @@ iffpicture.library/ReadDEST                             iffpicture.library/ReadD
    SEE ALSO
 	ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadSPRT                             iffpicture.library/ReadSPRT
+iffpicture.lib/ReadSPRT                             iffpicture.lib/ReadSPRT
 
    NAME
 	ReadSPRT -- read SPRT chunk (sprite precedence). (V1.0)
@@ -1388,7 +1388,7 @@ iffpicture.library/ReadSPRT                             iffpicture.library/ReadS
    SEE ALSO
 	ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadCRNG                             iffpicture.library/ReadCRNG
+iffpicture.lib/ReadCRNG                             iffpicture.lib/ReadCRNG
 
    NAME
 	ReadCRNG -- read CRNG chunk (color range, first instance). (V1.0)
@@ -1421,7 +1421,7 @@ iffpicture.library/ReadCRNG                             iffpicture.library/ReadC
    SEE ALSO
 	ReadAllCRNG(), ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadAllCRNG                       iffpicture.library/ReadAllCRNG
+iffpicture.lib/ReadAllCRNG                       iffpicture.lib/ReadAllCRNG
 
    NAME
 	ReadAllCRNG -- read all CRNG chunks (color ranges). (V1.0)
@@ -1452,7 +1452,7 @@ iffpicture.library/ReadAllCRNG                       iffpicture.library/ReadAllC
    SEE ALSO
 	ReadCRNG(), ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadCopyright                     iffpicture.library/ReadCopyright
+iffpicture.lib/ReadCopyright                     iffpicture.lib/ReadCopyright
 
    NAME
 	ReadCopyright -- read Copyright chunk. (V1.0)
@@ -1482,7 +1482,7 @@ iffpicture.library/ReadCopyright                     iffpicture.library/ReadCopy
    SEE ALSO
 	ReadAuthor(), ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadAuthor                           iffpicture.library/ReadAuthor
+iffpicture.lib/ReadAuthor                           iffpicture.lib/ReadAuthor
 
    NAME
 	ReadAuthor -- read AUTH chunk (author information). (V1.0)
@@ -1512,7 +1512,7 @@ iffpicture.library/ReadAuthor                           iffpicture.library/ReadA
    SEE ALSO
 	ReadCopyright(), ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadAnnotation                     iffpicture.library/ReadAnnotation
+iffpicture.lib/ReadAnnotation                     iffpicture.lib/ReadAnnotation
 
    NAME
 	ReadAnnotation -- read ANNO chunk (first instance). (V1.0)
@@ -1545,7 +1545,7 @@ iffpicture.library/ReadAnnotation                     iffpicture.library/ReadAnn
    SEE ALSO
 	ReadAllAnnotations(), ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadAllAnnotations           iffpicture.library/ReadAllAnnotations
+iffpicture.lib/ReadAllAnnotations           iffpicture.lib/ReadAllAnnotations
 
    NAME
 	ReadAllAnnotations -- read all ANNO chunks (annotations). (V1.0)
@@ -1576,7 +1576,7 @@ iffpicture.library/ReadAllAnnotations           iffpicture.library/ReadAllAnnota
    SEE ALSO
 	ReadAnnotation(), ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadText                             iffpicture.library/ReadText
+iffpicture.lib/ReadText                             iffpicture.lib/ReadText
 
    NAME
 	ReadText -- read TEXT chunk (first instance). (V1.0)
@@ -1608,7 +1608,7 @@ iffpicture.library/ReadText                             iffpicture.library/ReadT
    SEE ALSO
 	ReadAllTexts(), ParseIFFPicture(), ReadMetadata(), <iffpicture.h>
 
-iffpicture.library/ReadAllTexts                       iffpicture.library/ReadAllTexts
+iffpicture.lib/ReadAllTexts                       iffpicture.lib/ReadAllTexts
 
    NAME
 	ReadAllTexts -- read all TEXT chunks. (V1.0)

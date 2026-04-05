@@ -1,57 +1,57 @@
 TABLE OF CONTENTS
 
-iffsound.library/AllocIFFSound
-iffsound.library/FreeIFFSound
-iffsound.library/InitIFFSoundasDOS
-iffsound.library/OpenIFFSound
-iffsound.library/CloseIFFSound
-iffsound.library/ParseIFFSound
-iffsound.library/ReadVHDR
-iffsound.library/ReadCOMM
-iffsound.library/ReadMAUD
-iffsound.library/ReadBODY
-iffsound.library/ReadNAME
-iffsound.library/ReadCopyright
-iffsound.library/ReadAuthor
-iffsound.library/ReadAnnotation
-iffsound.library/ReadAllAnnotations
-iffsound.library/ReadATAK
-iffsound.library/ReadRLSE
-iffsound.library/ReadCHAN
-iffsound.library/ReadPAN
-iffsound.library/ReadSEQN
-iffsound.library/ReadFADE
-iffsound.library/ReadFVER
-iffsound.library/ReadFVERString
-iffsound.library/ReadAllMarkers
-iffsound.library/ReadINST
-iffsound.library/ReadAllComments
-iffsound.library/GetIFFHandle
-iffsound.library/GetSampleRate
-iffsound.library/GetChannels
-iffsound.library/GetBitDepth
-iffsound.library/GetSampleCount
-iffsound.library/GetFormType
-iffsound.library/GetVHDR
-iffsound.library/GetCOMM
-iffsound.library/GetMAUD
-iffsound.library/GetSampleData
-iffsound.library/GetSampleDataSize
-iffsound.library/IsCompressed
-iffsound.library/GetDuration
-iffsound.library/GetDurationSeconds
-iffsound.library/GetBitRate
-iffsound.library/GetByteRate
-iffsound.library/GetLength
-iffsound.library/GetSoundInfo
-iffsound.library/Decode
-iffsound.library/DecodeToPCM
-iffsound.library/DecodeTo8Bit
-iffsound.library/DecodeTo16Bit
-iffsound.library/AnalyzeFormat
-iffsound.library/IFFSoundError
-iffsound.library/IFFSoundErrorString
-iffsound.library/AllocIFFSound                           iffsound.library/AllocIFFSound
+iffsound.lib/AllocIFFSound
+iffsound.lib/FreeIFFSound
+iffsound.lib/InitIFFSoundasDOS
+iffsound.lib/OpenIFFSound
+iffsound.lib/CloseIFFSound
+iffsound.lib/ParseIFFSound
+iffsound.lib/ReadVHDR
+iffsound.lib/ReadCOMM
+iffsound.lib/ReadMAUD
+iffsound.lib/ReadBODY
+iffsound.lib/ReadNAME
+iffsound.lib/ReadCopyright
+iffsound.lib/ReadAuthor
+iffsound.lib/ReadAnnotation
+iffsound.lib/ReadAllAnnotations
+iffsound.lib/ReadATAK
+iffsound.lib/ReadRLSE
+iffsound.lib/ReadCHAN
+iffsound.lib/ReadPAN
+iffsound.lib/ReadSEQN
+iffsound.lib/ReadFADE
+iffsound.lib/ReadFVER
+iffsound.lib/ReadFVERString
+iffsound.lib/ReadAllMarkers
+iffsound.lib/ReadINST
+iffsound.lib/ReadAllComments
+iffsound.lib/GetIFFHandle
+iffsound.lib/GetSampleRate
+iffsound.lib/GetChannels
+iffsound.lib/GetBitDepth
+iffsound.lib/GetSampleCount
+iffsound.lib/GetFormType
+iffsound.lib/GetVHDR
+iffsound.lib/GetCOMM
+iffsound.lib/GetMAUD
+iffsound.lib/GetSampleData
+iffsound.lib/GetSampleDataSize
+iffsound.lib/IsCompressed
+iffsound.lib/GetDuration
+iffsound.lib/GetDurationSeconds
+iffsound.lib/GetBitRate
+iffsound.lib/GetByteRate
+iffsound.lib/GetLength
+iffsound.lib/GetSoundInfo
+iffsound.lib/Decode
+iffsound.lib/DecodeToPCM
+iffsound.lib/DecodeTo8Bit
+iffsound.lib/DecodeTo16Bit
+iffsound.lib/AnalyzeFormat
+iffsound.lib/IFFSoundError
+iffsound.lib/IFFSoundErrorString
+iffsound.lib/AllocIFFSound                           iffsound.lib/AllocIFFSound
 
    NAME
 	AllocIFFSound -- create a new IFFSound structure. (V1.0)
@@ -73,7 +73,7 @@ iffsound.library/AllocIFFSound                           iffsound.library/AllocI
    SEE ALSO
 	FreeIFFSound(), <iffsound.h>
 
-iffsound.library/FreeIFFSound                         iffsound.library/FreeIFFSound
+iffsound.lib/FreeIFFSound                         iffsound.lib/FreeIFFSound
 
    NAME
 	FreeIFFSound -- deallocate an IFFSound structure. (V1.0)
@@ -96,7 +96,7 @@ iffsound.library/FreeIFFSound                         iffsound.library/FreeIFFSo
    SEE ALSO
 	AllocIFFSound(), CloseIFFSound(), <iffsound.h>
 
-iffsound.library/InitIFFSoundasDOS               iffsound.library/InitIFFSoundasDOS
+iffsound.lib/InitIFFSoundasDOS               iffsound.lib/InitIFFSoundasDOS
 
    NAME
 	InitIFFSoundasDOS -- initialize an IFFSound as a DOS stream. (V1.0)
@@ -122,7 +122,7 @@ iffsound.library/InitIFFSoundasDOS               iffsound.library/InitIFFSoundas
    SEE ALSO
 	OpenIFFSound(), GetIFFHandle(), <iffsound.h>
 
-iffsound.library/OpenIFFSound                         iffsound.library/OpenIFFSound
+iffsound.lib/OpenIFFSound                         iffsound.lib/OpenIFFSound
 
    NAME
 	OpenIFFSound -- prepare an IFFSound to read or write a new IFF stream.
@@ -154,7 +154,7 @@ iffsound.library/OpenIFFSound                         iffsound.library/OpenIFFSo
    SEE ALSO
 	CloseIFFSound(), InitIFFSoundasDOS(), GetIFFHandle(), <iffsound.h>
 
-iffsound.library/CloseIFFSound                       iffsound.library/CloseIFFSound
+iffsound.lib/CloseIFFSound                       iffsound.lib/CloseIFFSound
 
    NAME
 	CloseIFFSound -- close an IFFSound context. (V1.0)
@@ -182,7 +182,7 @@ iffsound.library/CloseIFFSound                       iffsound.library/CloseIFFSo
    SEE ALSO
 	OpenIFFSound(), FreeIFFSound(), <iffsound.h>
 
-iffsound.library/ParseIFFSound                       iffsound.library/ParseIFFSound
+iffsound.lib/ParseIFFSound                       iffsound.lib/ParseIFFSound
 
    NAME
 	ParseIFFSound -- parse an IFF file structure. (V1.0)
@@ -216,7 +216,7 @@ iffsound.library/ParseIFFSound                       iffsound.library/ParseIFFSo
 	OpenIFFSound(), ReadVHDR(), ReadCOMM(), ReadMAUD(), ReadBODY(),
 	<iffsound.h>
 
-iffsound.library/ReadVHDR                               iffsound.library/ReadVHDR
+iffsound.lib/ReadVHDR                               iffsound.lib/ReadVHDR
 
    NAME
 	ReadVHDR -- read VHDR (Voice Header) chunk. (V1.0)
@@ -245,7 +245,7 @@ iffsound.library/ReadVHDR                               iffsound.library/ReadVHD
    SEE ALSO
 	ParseIFFSound(), GetVHDR(), <iffsound.h>
 
-iffsound.library/ReadCOMM                               iffsound.library/ReadCOMM
+iffsound.lib/ReadCOMM                               iffsound.lib/ReadCOMM
 
    NAME
 	ReadCOMM -- read COMM (Common) chunk. (V1.0)
@@ -274,7 +274,7 @@ iffsound.library/ReadCOMM                               iffsound.library/ReadCOM
    SEE ALSO
 	ParseIFFSound(), GetCOMM(), <iffsound.h>
 
-iffsound.library/ReadMAUD                               iffsound.library/ReadMAUD
+iffsound.lib/ReadMAUD                               iffsound.lib/ReadMAUD
 
    NAME
 	ReadMAUD -- read MAUD header chunk. (V1.0)
@@ -301,7 +301,7 @@ iffsound.library/ReadMAUD                               iffsound.library/ReadMAU
    SEE ALSO
 	ParseIFFSound(), GetMAUD(), <iffsound.h>
 
-iffsound.library/ReadBODY                               iffsound.library/ReadBODY
+iffsound.lib/ReadBODY                               iffsound.lib/ReadBODY
 
    NAME
 	ReadBODY -- read BODY or SSND chunk header information. (V1.0)
@@ -329,7 +329,7 @@ iffsound.library/ReadBODY                               iffsound.library/ReadBOD
    SEE ALSO
 	ParseIFFSound(), Decode(), <iffsound.h>
 
-iffsound.library/ReadNAME                               iffsound.library/ReadNAME
+iffsound.lib/ReadNAME                               iffsound.lib/ReadNAME
 
    NAME
 	ReadNAME -- read NAME chunk. (V1.0)
@@ -357,7 +357,7 @@ iffsound.library/ReadNAME                               iffsound.library/ReadNAM
    SEE ALSO
 	ParseIFFSound(), ReadCopyright(), ReadAuthor(), <iffsound.h>
 
-iffsound.library/ReadCopyright                     iffsound.library/ReadCopyright
+iffsound.lib/ReadCopyright                     iffsound.lib/ReadCopyright
 
    NAME
 	ReadCopyright -- read Copyright chunk. (V1.0)
@@ -386,7 +386,7 @@ iffsound.library/ReadCopyright                     iffsound.library/ReadCopyrigh
    SEE ALSO
 	ReadAuthor(), ReadNAME(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadAuthor                             iffsound.library/ReadAuthor
+iffsound.lib/ReadAuthor                             iffsound.lib/ReadAuthor
 
    NAME
 	ReadAuthor -- read AUTH chunk (author information). (V1.0)
@@ -415,7 +415,7 @@ iffsound.library/ReadAuthor                             iffsound.library/ReadAut
    SEE ALSO
 	ReadCopyright(), ReadNAME(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadAnnotation                     iffsound.library/ReadAnnotation
+iffsound.lib/ReadAnnotation                     iffsound.lib/ReadAnnotation
 
    NAME
 	ReadAnnotation -- read ANNO chunk (first instance). (V1.0)
@@ -447,7 +447,7 @@ iffsound.library/ReadAnnotation                     iffsound.library/ReadAnnotat
    SEE ALSO
 	ReadAllAnnotations(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadAllAnnotations             iffsound.library/ReadAllAnnotations
+iffsound.lib/ReadAllAnnotations             iffsound.lib/ReadAllAnnotations
 
    NAME
 	ReadAllAnnotations -- read all ANNO chunks. (V1.0)
@@ -477,7 +477,7 @@ iffsound.library/ReadAllAnnotations             iffsound.library/ReadAllAnnotati
    SEE ALSO
 	ReadAnnotation(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadATAK                               iffsound.library/ReadATAK
+iffsound.lib/ReadATAK                               iffsound.lib/ReadATAK
 
    NAME
 	ReadATAK -- read ATAK chunk (attack envelope). (V1.0)
@@ -507,7 +507,7 @@ iffsound.library/ReadATAK                               iffsound.library/ReadATA
    SEE ALSO
 	ReadRLSE(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadRLSE                               iffsound.library/ReadRLSE
+iffsound.lib/ReadRLSE                               iffsound.lib/ReadRLSE
 
    NAME
 	ReadRLSE -- read RLSE chunk (release envelope). (V1.0)
@@ -537,7 +537,7 @@ iffsound.library/ReadRLSE                               iffsound.library/ReadRLS
    SEE ALSO
 	ReadATAK(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadCHAN                               iffsound.library/ReadCHAN
+iffsound.lib/ReadCHAN                               iffsound.lib/ReadCHAN
 
    NAME
 	ReadCHAN -- read CHAN chunk (channel assignment). (V1.0)
@@ -566,7 +566,7 @@ iffsound.library/ReadCHAN                               iffsound.library/ReadCHA
    SEE ALSO
 	ReadPAN(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadPAN                                iffsound.library/ReadPAN
+iffsound.lib/ReadPAN                                iffsound.lib/ReadPAN
 
    NAME
 	ReadPAN -- read PAN chunk (panning position). (V1.0)
@@ -594,7 +594,7 @@ iffsound.library/ReadPAN                                iffsound.library/ReadPAN
    SEE ALSO
 	ReadCHAN(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadSEQN                               iffsound.library/ReadSEQN
+iffsound.lib/ReadSEQN                               iffsound.lib/ReadSEQN
 
    NAME
 	ReadSEQN -- read SEQN chunk (sequence/loop definitions). (V1.0)
@@ -624,7 +624,7 @@ iffsound.library/ReadSEQN                               iffsound.library/ReadSEQ
    SEE ALSO
 	ReadFADE(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadFADE                               iffsound.library/ReadFADE
+iffsound.lib/ReadFADE                               iffsound.lib/ReadFADE
 
    NAME
 	ReadFADE -- read FADE chunk (fade loop number). (V1.0)
@@ -651,7 +651,7 @@ iffsound.library/ReadFADE                               iffsound.library/ReadFAD
    SEE ALSO
 	ReadSEQN(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadFVER                               iffsound.library/ReadFVER
+iffsound.lib/ReadFVER                               iffsound.lib/ReadFVER
 
    NAME
 	ReadFVER -- read FVER chunk (AIFC format version timestamp). (V1.0)
@@ -679,7 +679,7 @@ iffsound.library/ReadFVER                               iffsound.library/ReadFVE
    SEE ALSO
 	ReadFVERString(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadFVERString                     iffsound.library/ReadFVERString
+iffsound.lib/ReadFVERString                     iffsound.lib/ReadFVERString
 
    NAME
 	ReadFVERString -- read FVER chunk (version string for non-AIFC). (V1.0)
@@ -709,7 +709,7 @@ iffsound.library/ReadFVERString                     iffsound.library/ReadFVERStr
    SEE ALSO
 	ReadFVER(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadAllMarkers                     iffsound.library/ReadAllMarkers
+iffsound.lib/ReadAllMarkers                     iffsound.lib/ReadAllMarkers
 
    NAME
 	ReadAllMarkers -- read all MARK chunks (AIFF/AIFC markers). (V1.0)
@@ -739,7 +739,7 @@ iffsound.library/ReadAllMarkers                     iffsound.library/ReadAllMark
    SEE ALSO
 	ReadINST(), ReadAllComments(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadINST                               iffsound.library/ReadINST
+iffsound.lib/ReadINST                               iffsound.lib/ReadINST
 
    NAME
 	ReadINST -- read INST chunk (instrument data). (V1.0)
@@ -768,7 +768,7 @@ iffsound.library/ReadINST                               iffsound.library/ReadINS
    SEE ALSO
 	ReadAllMarkers(), ReadAllComments(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/ReadAllComments                   iffsound.library/ReadAllComments
+iffsound.lib/ReadAllComments                   iffsound.lib/ReadAllComments
 
    NAME
 	ReadAllComments -- read all COMT chunks (timestamped comments). (V1.0)
@@ -798,7 +798,7 @@ iffsound.library/ReadAllComments                   iffsound.library/ReadAllComme
    SEE ALSO
 	ReadAllMarkers(), ReadINST(), ParseIFFSound(), <iffsound.h>
 
-iffsound.library/GetIFFHandle                       iffsound.library/GetIFFHandle
+iffsound.lib/GetIFFHandle                       iffsound.lib/GetIFFHandle
 
    NAME
 	GetIFFHandle -- get pointer to internal IFFHandle structure. (V1.0)
@@ -824,7 +824,7 @@ iffsound.library/GetIFFHandle                       iffsound.library/GetIFFHandl
    SEE ALSO
 	InitIFFSoundasDOS(), OpenIFFSound(), <iffsound.h>
 
-iffsound.library/GetSampleRate                       iffsound.library/GetSampleRate
+iffsound.lib/GetSampleRate                       iffsound.lib/GetSampleRate
 
    NAME
 	GetSampleRate -- get sample rate in Hz. (V1.0)
@@ -849,7 +849,7 @@ iffsound.library/GetSampleRate                       iffsound.library/GetSampleR
    SEE ALSO
 	GetChannels(), GetBitDepth(), GetSoundInfo(), <iffsound.h>
 
-iffsound.library/GetChannels                           iffsound.library/GetChannels
+iffsound.lib/GetChannels                           iffsound.lib/GetChannels
 
    NAME
 	GetChannels -- get number of audio channels. (V1.0)
@@ -873,7 +873,7 @@ iffsound.library/GetChannels                           iffsound.library/GetChann
    SEE ALSO
 	GetSampleRate(), GetBitDepth(), GetSoundInfo(), <iffsound.h>
 
-iffsound.library/GetBitDepth                           iffsound.library/GetBitDepth
+iffsound.lib/GetBitDepth                           iffsound.lib/GetBitDepth
 
    NAME
 	GetBitDepth -- get bit depth. (V1.0)
@@ -898,7 +898,7 @@ iffsound.library/GetBitDepth                           iffsound.library/GetBitDe
    SEE ALSO
 	GetSampleRate(), GetChannels(), GetSoundInfo(), <iffsound.h>
 
-iffsound.library/GetSampleCount                     iffsound.library/GetSampleCount
+iffsound.lib/GetSampleCount                     iffsound.lib/GetSampleCount
 
    NAME
 	GetSampleCount -- get total number of sample frames. (V1.0)
@@ -924,7 +924,7 @@ iffsound.library/GetSampleCount                     iffsound.library/GetSampleCo
    SEE ALSO
 	GetLength(), GetSoundInfo(), <iffsound.h>
 
-iffsound.library/GetFormType                           iffsound.library/GetFormType
+iffsound.lib/GetFormType                           iffsound.lib/GetFormType
 
    NAME
 	GetFormType -- get IFF FORM type identifier. (V1.0)
@@ -948,7 +948,7 @@ iffsound.library/GetFormType                           iffsound.library/GetFormT
    SEE ALSO
 	<iffsound.h>
 
-iffsound.library/GetVHDR                               iffsound.library/GetVHDR
+iffsound.lib/GetVHDR                               iffsound.lib/GetVHDR
 
    NAME
 	GetVHDR -- get pointer to Voice8Header structure. (V1.0)
@@ -974,7 +974,7 @@ iffsound.library/GetVHDR                               iffsound.library/GetVHDR
    SEE ALSO
 	ReadVHDR(), GetFormType(), <iffsound.h>
 
-iffsound.library/GetCOMM                               iffsound.library/GetCOMM
+iffsound.lib/GetCOMM                               iffsound.lib/GetCOMM
 
    NAME
 	GetCOMM -- get pointer to AIFFCommon structure. (V1.0)
@@ -1000,7 +1000,7 @@ iffsound.library/GetCOMM                               iffsound.library/GetCOMM
    SEE ALSO
 	ReadCOMM(), GetFormType(), <iffsound.h>
 
-iffsound.library/GetMAUD                               iffsound.library/GetMAUD
+iffsound.lib/GetMAUD                               iffsound.lib/GetMAUD
 
    NAME
 	GetMAUD -- get pointer to MAUDHeader structure. (V1.0)
@@ -1026,7 +1026,7 @@ iffsound.library/GetMAUD                               iffsound.library/GetMAUD
    SEE ALSO
 	ReadMAUD(), GetFormType(), <iffsound.h>
 
-iffsound.library/GetSampleData                       iffsound.library/GetSampleData
+iffsound.lib/GetSampleData                       iffsound.lib/GetSampleData
 
    NAME
 	GetSampleData -- get pointer to decoded sample data buffer. (V1.0)
@@ -1052,7 +1052,7 @@ iffsound.library/GetSampleData                       iffsound.library/GetSampleD
 	Decode(), DecodeTo8Bit(), DecodeTo16Bit(), GetSampleDataSize(),
 	GetSoundInfo(), <iffsound.h>
 
-iffsound.library/GetSampleDataSize                 iffsound.library/GetSampleDataSize
+iffsound.lib/GetSampleDataSize                 iffsound.lib/GetSampleDataSize
 
    NAME
 	GetSampleDataSize -- get size of decoded sample data in bytes. (V1.0)
@@ -1076,7 +1076,7 @@ iffsound.library/GetSampleDataSize                 iffsound.library/GetSampleDat
    SEE ALSO
 	GetSampleData(), Decode(), GetSoundInfo(), <iffsound.h>
 
-iffsound.library/IsCompressed                         iffsound.library/IsCompressed
+iffsound.lib/IsCompressed                         iffsound.lib/IsCompressed
 
    NAME
 	IsCompressed -- check if audio data is compressed. (V1.0)
@@ -1101,7 +1101,7 @@ iffsound.library/IsCompressed                         iffsound.library/IsCompres
    SEE ALSO
 	AnalyzeFormat(), Decode(), <iffsound.h>
 
-iffsound.library/GetDuration                           iffsound.library/GetDuration
+iffsound.lib/GetDuration                           iffsound.lib/GetDuration
 
    NAME
 	GetDuration -- get duration in milliseconds. (V1.0)
@@ -1127,7 +1127,7 @@ iffsound.library/GetDuration                           iffsound.library/GetDurat
 	GetDurationSeconds(), GetSampleCount(), GetSampleRate(), GetSoundInfo(),
 	<iffsound.h>
 
-iffsound.library/GetDurationSeconds               iffsound.library/GetDurationSeconds
+iffsound.lib/GetDurationSeconds               iffsound.lib/GetDurationSeconds
 
    NAME
 	GetDurationSeconds -- get duration in seconds (floating-point). (V1.0)
@@ -1151,7 +1151,7 @@ iffsound.library/GetDurationSeconds               iffsound.library/GetDurationSe
    SEE ALSO
 	GetDuration(), GetSampleCount(), GetSampleRate(), <iffsound.h>
 
-iffsound.library/GetBitRate                           iffsound.library/GetBitRate
+iffsound.lib/GetBitRate                           iffsound.lib/GetBitRate
 
    NAME
 	GetBitRate -- get bit rate in bits per second. (V1.0)
@@ -1175,7 +1175,7 @@ iffsound.library/GetBitRate                           iffsound.library/GetBitRat
    SEE ALSO
 	GetByteRate(), GetSoundInfo(), <iffsound.h>
 
-iffsound.library/GetByteRate                           iffsound.library/GetByteRate
+iffsound.lib/GetByteRate                           iffsound.lib/GetByteRate
 
    NAME
 	GetByteRate -- get byte rate in bytes per second. (V1.0)
@@ -1199,7 +1199,7 @@ iffsound.library/GetByteRate                           iffsound.library/GetByteR
    SEE ALSO
 	GetBitRate(), GetSoundInfo(), <iffsound.h>
 
-iffsound.library/GetLength                             iffsound.library/GetLength
+iffsound.lib/GetLength                             iffsound.lib/GetLength
 
    NAME
 	GetLength -- get length in sample frames. (V1.0)
@@ -1224,7 +1224,7 @@ iffsound.library/GetLength                             iffsound.library/GetLengt
    SEE ALSO
 	GetSampleCount(), GetSoundInfo(), <iffsound.h>
 
-iffsound.library/GetSoundInfo                       iffsound.library/GetSoundInfo
+iffsound.lib/GetSoundInfo                       iffsound.lib/GetSoundInfo
 
    NAME
 	GetSoundInfo -- get aggregate of core audio properties. (V1.0)
@@ -1255,7 +1255,7 @@ iffsound.library/GetSoundInfo                       iffsound.library/GetSoundInf
 	GetSampleRate(), GetChannels(), GetFormType(), GetDuration(),
 	<iffsound.h>
 
-iffsound.library/Decode                                 iffsound.library/Decode
+iffsound.lib/Decode                                 iffsound.lib/Decode
 
    NAME
 	Decode -- decode IFF audio data to internal format. (V1.0)
@@ -1281,7 +1281,7 @@ iffsound.library/Decode                                 iffsound.library/Decode
    SEE ALSO
 	ParseIFFSound(), DecodeTo8Bit(), DecodeTo16Bit(), <iffsound.h>
 
-iffsound.library/DecodeToPCM                         iffsound.library/DecodeToPCM
+iffsound.lib/DecodeToPCM                         iffsound.lib/DecodeToPCM
 
    NAME
 	DecodeToPCM -- decode IFF audio and convert to PCM format. (V1.0)
@@ -1309,7 +1309,7 @@ iffsound.library/DecodeToPCM                         iffsound.library/DecodeToPC
    SEE ALSO
 	Decode(), DecodeTo8Bit(), DecodeTo16Bit(), FreeIFFSound(), <iffsound.h>
 
-iffsound.library/DecodeTo8Bit                       iffsound.library/DecodeTo8Bit
+iffsound.lib/DecodeTo8Bit                       iffsound.lib/DecodeTo8Bit
 
    NAME
 	DecodeTo8Bit -- decode IFF audio and convert to 8-bit PCM. (V1.0)
@@ -1338,7 +1338,7 @@ iffsound.library/DecodeTo8Bit                       iffsound.library/DecodeTo8Bi
    SEE ALSO
 	Decode(), DecodeTo16Bit(), FreeIFFSound(), <iffsound.h>
 
-iffsound.library/DecodeTo16Bit                     iffsound.library/DecodeTo16Bit
+iffsound.lib/DecodeTo16Bit                     iffsound.lib/DecodeTo16Bit
 
    NAME
 	DecodeTo16Bit -- decode IFF audio and convert to 16-bit PCM. (V1.0)
@@ -1367,7 +1367,7 @@ iffsound.library/DecodeTo16Bit                     iffsound.library/DecodeTo16Bi
    SEE ALSO
 	Decode(), DecodeTo8Bit(), FreeIFFSound(), <iffsound.h>
 
-iffsound.library/AnalyzeFormat                       iffsound.library/AnalyzeFormat
+iffsound.lib/AnalyzeFormat                       iffsound.lib/AnalyzeFormat
 
    NAME
 	AnalyzeFormat -- analyze IFF audio format and properties. (V1.0)
@@ -1393,7 +1393,7 @@ iffsound.library/AnalyzeFormat                       iffsound.library/AnalyzeFor
    SEE ALSO
 	ParseIFFSound(), Decode(), <iffsound.h>
 
-iffsound.library/IFFSoundError                       iffsound.library/IFFSoundError
+iffsound.lib/IFFSoundError                       iffsound.lib/IFFSoundError
 
    NAME
 	IFFSoundError -- get last error code. (V1.0)
@@ -1418,7 +1418,7 @@ iffsound.library/IFFSoundError                       iffsound.library/IFFSoundEr
    SEE ALSO
 	IFFSoundErrorString(), <iffsound.h>
 
-iffsound.library/IFFSoundErrorString                 iffsound.library/IFFSoundErrorString
+iffsound.lib/IFFSoundErrorString                 iffsound.lib/IFFSoundErrorString
 
    NAME
 	IFFSoundErrorString -- get last error message. (V1.0)
